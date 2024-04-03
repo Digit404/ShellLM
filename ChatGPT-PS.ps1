@@ -89,6 +89,58 @@ class Command {
     }
 }
 
+class Message {
+    [string]$Content;
+    [string]$Role;
+
+    static [System.Collections.ArrayList]$Messages = @()
+
+    Message([string]$Content, [string]$Role) {
+        $this.Content = $Content
+        $this.Role = $Role ? $Role : "user"
+
+        [Message]::Messages.Add($this)
+    }
+
+    [psobject] Get() {
+        return [PSCustomObject]@{
+            content = $this.Content
+            role = $this.Role
+        }
+    }
+
+    static [psobject] GetMessages() {
+        return @([Message]::Messages | ForEach-Object { $_.Get() })
+    }
+
+    static Send([string]$Content) {
+        if ($Content) {
+            [Message]::new($Content, "user")
+        }
+        Write-Host "Thinking...`r" -NoNewline
+
+        try {
+            $response = (Invoke-WebRequest `
+            -Uri https://api.openai.com/v1/chat/completions `
+            -Method Post `
+            -Headers @{
+                "Authorization" = "Bearer $($env:OPENAI_API_KEY)"; 
+                "Content-Type" = "application/json"
+            } `
+            -Body (@{
+                model = "gpt-3.5-turbo"; 
+                messages = [Message]::GetMessages()} | ConvertTo-Json -Compress)) | ConvertFrom-Json
+
+            $responseMessage = $response.choices[0].message
+
+            [Message]::new($responseMessage.content, $responseMessage.role)
+            
+        } catch {
+            Write-Host "An error occurred: $_" -ForegroundColor Red
+        }
+    }
+}
+
 [Command]::new(@("exit", "quit", "e"), {exit}, "Exit the program")
 [Command]::new(@("help"), {[Command]::Help() }, "Show this help message")
 
