@@ -11,14 +11,14 @@ if (!(Test-Path $CONVERSATIONS_DIR)) {
 function WrapText {
     param (
         [string]$Text,
-        [string]$FirstIndent = "",
+        [string]$FirstIndent,
         [int]$Indent
     )
 
     $Width = $Host.UI.RawUI.BufferSize.Width - ($Indent)
 
     # First indent should be the same as the indent when not specified
-    $wrappedText = "" + $FirstIndent ? $FirstIndent : (" " * $Indent)
+    $wrappedText = $FirstIndent ? $FirstIndent : (" " * $Indent)
 
     $words = $Text -split '\s+|\r?\n'
 
@@ -107,23 +107,27 @@ class Message {
     [string]$content;
     [string]$role;
 
-    static [hashtable]$COLOR_MAP = @{
-        "{RED}" = "$ESC[31m"
-        "{GREEN}" = "$ESC[32m"
-        "{YELLOW}" = "$ESC[33m"
-        "{BLUE}" = "$ESC[34m"
-        "{MAGENTA}" = "$ESC[35m"
-        "{CYAN}" = "$ESC[36m"
-        "{WHITE}" = "$ESC[37m"
-        "{BRIGHTBLACK}" = "$ESC[90m"
-        "{BRIGHTRED}" = "$ESC[91m"
-        "{BRIGHTGREEN}" = "$ESC[92m"
-        "{BRIGHTYELLOW}" = "$ESC[93m"
-        "{BRIGHTBLUE}" = "$ESC[94m"
-        "{BRIGHTMAGENTA}" = "$ESC[95m"
-        "{BRIGHTCYAN}" = "$ESC[96m"
-        "{BRIGHTWHITE}" = "$ESC[97m"
+    static [hashtable]$COLORS = [PSCustomObject]@{
+        RED = "$ESC[31m"
+        GREEN = "$ESC[32m"
+        YELLOW = "$ESC[33m"
+        BLUE = "$ESC[34m"
+        MAGENTA = "$ESC[35m"
+        CYAN = "$ESC[36m"
+        WHITE = "$ESC[37m"
+        BRIGHTBLACK = "$ESC[90m"
+        BRIGHTRED = "$ESC[91m"
+        BRIGHTGREEN = "$ESC[92m"
+        BRIGHTYELLOW = "$ESC[93m"
+        BRIGHTBLUE = "$ESC[94m"
+        BRIGHTMAGENTA = "$ESC[95m"
+        BRIGHTCYAN = "$ESC[96m"
+        BRIGHTWHITE = "$ESC[97m"
+        RESET = "$ESC[33m"
     }
+
+    static [string] $AI_COLOR = [Message]::COLORS.YELLOW
+    static [string] $USER_COLOR = [Message]::COLORS.BLUE
 
     static [System.Collections.ArrayList]$Messages = @()
 
@@ -182,10 +186,20 @@ class Message {
 
         # If the message is not a system message, apply color formatting
         if (!($Message.role -eq "system")) {
-            foreach ($Item in [Message]::COLOR_MAP.GetEnumerator()) {
-                $messageContent = $messageContent -replace $Item.Key, $Item.Value
+            foreach ($Item in [Message]::COLORS.GetEnumerator()) {
+                $messageContent = $messageContent -replace "{$($Item.Key)}", $Item.Value
             }
         }
+
+        $Indent = if ($Message.role -eq "assistant") {
+            ([Message]::AI_COLOR + "GPT: ")
+        } elseif ($Message.role -eq "user") {
+            ([Message]::USER_COLOR + "You: ")
+        } else {
+            ([Message]::COLORS.WHITE + "Sys: ")
+        }
+
+        $messageContent = WrapText -Text $messageContent -FirstIndent $Indent -Indent 5
 
         return $messageContent
     }
