@@ -1,30 +1,44 @@
 $ESC = [char]27
 
-$global:COLORS = @{
-    BLACK         = "$ESC[30m"
-    RED           = "$ESC[31m"
-    GREEN         = "$ESC[32m"
-    YELLOW        = "$ESC[33m"
-    BLUE          = "$ESC[34m"
-    MAGENTA       = "$ESC[35m"
-    CYAN          = "$ESC[36m"
-    WHITE         = "$ESC[37m"
-    BRIGHTBLACK   = "$ESC[90m"
-    BRIGHTRED     = "$ESC[91m"
-    BRIGHTGREEN   = "$ESC[92m"
-    BRIGHTYELLOW  = "$ESC[93m"
-    BRIGHTBLUE    = "$ESC[94m"
-    BRIGHTMAGENTA = "$ESC[95m"
-    BRIGHTCYAN    = "$ESC[96m"
-    BRIGHTWHITE   = "$ESC[97m"
-}
-
 $MODEL = "gpt-4"
 
 $CONVERSATIONS_DIR = Join-Path $PSScriptRoot .\conversations\
 
 if (!(Test-Path $CONVERSATIONS_DIR)) {
     New-Item -ItemType Directory -Path $CONVERSATIONS_DIR
+}
+
+function WrapText {
+    param (
+        [string]$Text,
+        [string]$FirstIndent = "",
+        [int]$Indent
+    )
+
+    $Width = $Host.UI.RawUI.BufferSize.Width - ($Indent)
+
+    # First indent should be the same as the indent when not specified
+    $wrappedText = "" + $FirstIndent ? $FirstIndent : (" " * $Indent)
+
+    $words = $Text -split '\s+|\r?\n'
+
+    $lineLength = 0
+
+    while ($words) {
+        $word = $words[0]
+
+        if ($lineLength + $word.Length + 1 -gt $Width) {
+            $wrappedText += "`n" + (" " * $Indent)
+            $lineLength = 0
+        }
+
+        $wrappedText += "$word "
+        $lineLength += $word.Length + 1
+
+        $words = $words[1..$words.Length]
+    }
+
+    return $wrappedText
 }
 
 class Command {
@@ -94,21 +108,21 @@ class Message {
     [string]$role;
 
     static [hashtable]$COLOR_MAP = @{
-        "{RED}" = $global:COLORS["RED"];
-        "{GREEN}" = $global:COLORS["GREEN"];
-        "{YELLOW}" = $global:COLORS["YELLOW"];
-        "{BLUE}" = $global:COLORS["BLUE"];
-        "{MAGENTA}" = $global:COLORS["MAGENTA"];
-        "{CYAN}" = $global:COLORS["CYAN"];
-        "{WHITE}" = $global:COLORS["WHITE"];
-        "{BRIGHTBLACK}" = $global:COLORS["BRIGHTBLACK"];
-        "{BRIGHTRED}" = $global:COLORS["BRIGHTRED"];
-        "{BRIGHTGREEN}" = $global:COLORS["BRIGHTGREEN"];
-        "{BRIGHTYELLOW}" = $global:COLORS["BRIGHTYELLOW"];
-        "{BRIGHTBLUE}" = $global:COLORS["BRIGHTBLUE"];
-        "{BRIGHTMAGENTA}" = $global:COLORS["BRIGHTMAGENTA"];
-        "{BRIGHTCYAN}" = $global:COLORS["BRIGHTCYAN"];
-        "{BRIGHTWHITE}" = $global:COLORS["BRIGHTWHITE"];
+        "{RED}" = "$ESC[31m"
+        "{GREEN}" = "$ESC[32m"
+        "{YELLOW}" = "$ESC[33m"
+        "{BLUE}" = "$ESC[34m"
+        "{MAGENTA}" = "$ESC[35m"
+        "{CYAN}" = "$ESC[36m"
+        "{WHITE}" = "$ESC[37m"
+        "{BRIGHTBLACK}" = "$ESC[90m"
+        "{BRIGHTRED}" = "$ESC[91m"
+        "{BRIGHTGREEN}" = "$ESC[92m"
+        "{BRIGHTYELLOW}" = "$ESC[93m"
+        "{BRIGHTBLUE}" = "$ESC[94m"
+        "{BRIGHTMAGENTA}" = "$ESC[95m"
+        "{BRIGHTCYAN}" = "$ESC[96m"
+        "{BRIGHTWHITE}" = "$ESC[97m"
     }
 
     static [System.Collections.ArrayList]$Messages = @()
