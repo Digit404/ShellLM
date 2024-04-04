@@ -90,55 +90,92 @@ class Command {
 }
 
 class Message {
-    [string]$Content;
-    [string]$Role;
+    [string]$content;
+    [string]$role;
+
+    static [hashtable]$COLOR_MAP = @{
+        "{RED}" = $global:COLORS["RED"];
+        "{GREEN}" = $global:COLORS["GREEN"];
+        "{YELLOW}" = $global:COLORS["YELLOW"];
+        "{BLUE}" = $global:COLORS["BLUE"];
+        "{MAGENTA}" = $global:COLORS["MAGENTA"];
+        "{CYAN}" = $global:COLORS["CYAN"];
+        "{WHITE}" = $global:COLORS["WHITE"];
+        "{BRIGHTBLACK}" = $global:COLORS["BRIGHTBLACK"];
+        "{BRIGHTRED}" = $global:COLORS["BRIGHTRED"];
+        "{BRIGHTGREEN}" = $global:COLORS["BRIGHTGREEN"];
+        "{BRIGHTYELLOW}" = $global:COLORS["BRIGHTYELLOW"];
+        "{BRIGHTBLUE}" = $global:COLORS["BRIGHTBLUE"];
+        "{BRIGHTMAGENTA}" = $global:COLORS["BRIGHTMAGENTA"];
+        "{BRIGHTCYAN}" = $global:COLORS["BRIGHTCYAN"];
+        "{BRIGHTWHITE}" = $global:COLORS["BRIGHTWHITE"];
+    }
 
     static [System.Collections.ArrayList]$Messages = @()
 
-    Message([string]$Content, [string]$Role) {
-        $this.Content = $Content
-        $this.Role = $Role ? $Role : "user"
+    Message([string]$content, [string]$role) {
+        $this.content = $content
+        $this.role = $role ? $role : "user"
 
         [Message]::Messages.Add($this)
     }
 
-    [psobject] Get() {
-        return [PSCustomObject]@{
-            content = $this.Content
-            role = $this.Role
-        }
-    }
+    static [string] Send([string]$MessageContent) {
 
-    static [psobject] GetMessages() {
-        return @([Message]::Messages | ForEach-Object { $_.Get() })
-    }
-
-    static Send([string]$Content) {
-        if ($Content) {
-            [Message]::new($Content, "user")
+        # It doesn't exist if it's not added to the list
+        if ($MessageContent) {
+            [Message]::new($MessageContent, "user")
         }
+
+        # Print thinking message
         Write-Host "Thinking...`r" -NoNewline
 
         try {
-            $response = (Invoke-WebRequest `
+            # Define body for API call
+            $body = @{
+                model = $script:MODEL; 
+                messages = [Message]::Messages
+            } | ConvertTo-Json -Compress
+
+            # Main API call to OpenAI
+            $response = Invoke-WebRequest `
             -Uri https://api.openai.com/v1/chat/completions `
             -Method Post `
             -Headers @{
                 "Authorization" = "Bearer $($env:OPENAI_API_KEY)"; 
                 "Content-Type" = "application/json"
             } `
-            -Body (@{
-                model = "gpt-3.5-turbo"; 
-                messages = [Message]::GetMessages()} | ConvertTo-Json -Compress)) | ConvertFrom-Json
+            -Body $body | ConvertFrom-Json
 
-            $responseMessage = $response.choices[0].message
+            $assistantMessage = [Message]::new(
+                $response.choices[0].message.content, 
+                $response.choices[0].message.role
+            )
 
-            [Message]::new($responseMessage.content, $responseMessage.role)
+            # Clear the thinking message on the event that the message is very short.
+            Write-Host "              `r" -NoNewline
+
+            return [Message]::FormatMessage($assistantMessage)
             
         } catch {
             Write-Host "An error occurred: $_" -ForegroundColor Red
+            return ""
         }
     }
+    
+    static [string] FormatMessage([Message]$Message) {
+        $messageContent = $Message.content
+
+        # If the message is not a system message, apply color formatting
+        if (!($Message.role -eq "system")) {
+            foreach ($Item in [Message]::COLOR_MAP.GetEnumerator()) {
+                $messageContent = $messageContent -replace $Item.Key, $Item.Value
+            }
+        }
+
+        return $messageContent
+    }
+    
 }
 
 [Command]::new(@("exit", "quit", "e"), {exit}, "Exit the program")
