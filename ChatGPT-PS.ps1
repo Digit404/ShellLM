@@ -1,11 +1,18 @@
+[CmdletBinding(PositionalBinding=$false)] # Important as it make it so you can throw the model param anywhere
 param (
-    [Parameter(Position=0, ValueFromRemainingArguments)]
+    [Parameter(Mandatory=$false)]
+    [ValidateSet(
+        "gpt-4",
+        "gpt-4-turbo-preview",
+        "gpt-3.5-turbo"
+    )]
+    [string] $Model = "gpt-3.5-turbo",
+
+    [Parameter(ValueFromRemainingArguments)]
     [string] $Query
 )
 
 $ESC = [char]27
-
-$MODEL = "gpt-4"
 
 $CONVERSATIONS_DIR = Resolve-Path (Join-Path $PSScriptRoot .\conversations\)
 
@@ -119,7 +126,7 @@ class Command {
             [string]$arguments = $argumentsString -split '\s+'
             
             # Ensure we only pass the number of arguments the command expects
-            $arguments = $arguments[0..($command.ArgsNum - 1)]
+            $arguments = @($arguments)[0..($command.ArgsNum - 1)]
 
             # Dynamically invoke the script block with the correct number of arguments
             $command.Action.Invoke($arguments)
@@ -255,7 +262,7 @@ class Message {
 
     static Retry() {
         [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
-        [Message]::Submit()
+        Write-Host ([Message]::Submit().FormatMessage())
     }
 
     static ExportJson($filename) {
@@ -305,22 +312,50 @@ class Message {
     }
 
     static ImportJson($filename) {
-        Write-Host "This will clear the current conversation. Continue?"`
-        "$($script:COLORS.BRIGHTWHITE)[$($script:COLORS.GREEN)y$($script:COLORS.BRIGHTWHITE)/$($script:COLORS.RED)n$($script:COLORS.BRIGHTWHITE)]" -ForegroundColor Red
-
-        Write-Host "> " -NoNewline
-        if ($global:Host.UI.ReadLine() -ne "y") {
-            return
-        }
-
         if (!$filename) {
+            Write-Host "This will clear the current conversation. Type ""/cancel"" to cancel." -ForegroundColor Red
             Write-Host "Saved conversations:"
-            Get-ChildItem -Path $script:CONVERSATIONS_DIR -Filter *.json | ForEach-Object {
-                Write-Host "`t$($_.BaseName)" -ForegroundColor DarkYellow
+
+            # Sort items by most recent
+            $conversations = Get-ChildItem -Path $script:CONVERSATIONS_DIR -Filter *.json | Sort-Object LastWriteTime -Descending
+
+            # display each item
+            foreach ($conversation in $conversations) {
+                $index = $conversations.IndexOf($conversation) + 1
+                Write-Host "  [$index]`t$($conversation.BaseName)" -ForegroundColor DarkYellow
             }
-            Write-Host (WrapText "What is the name of the file you would like to import?")
+
+            # Numbers are 1-indexed
+            Write-Host (WrapText "Input the name or number of the file you would like to import.")
             Write-Host "> " -NoNewline
+
+            # Better than Read-Host because it doesn't output a ':'
             $filename = $global:Host.UI.ReadLine()
+
+            if ($filename -eq "/cancel") {
+                Write-Host "Import canceled" -ForegroundColor Red
+                return
+            }
+
+            # If the input is a number, use it to select the conversation
+            if ([int]::TryParse($filename, [ref]$null)) {
+                if ($filename -gt 0 -and $filename -lt $conversations.Count + 1) {
+                    $filename = $conversations[[int]$filename - 1].BaseName
+                } else {
+                    Write-Host "Invalid number" -ForegroundColor Red
+                    return
+                }
+            }
+        } else {
+            # If the user provided a comversation name
+            Write-Host "This will clear the current conversation. Continue?"`
+            "$($script:COLORS.BRIGHTWHITE)[$($script:COLORS.GREEN)y$($script:COLORS.BRIGHTWHITE)/$($script:COLORS.RED)n$($script:COLORS.BRIGHTWHITE)]" -ForegroundColor Red
+
+            # Make sure they have a chance to turn back
+            Write-Host "> " -NoNewline
+            if ($global:Host.UI.ReadLine() -ne "y") {
+                return
+            }
         }
 
         $filename += $filename -notlike "*.json" ? ".json" : ""
@@ -340,7 +375,7 @@ class Message {
             [Message]::new($message.content, $message.role)
         }
 
-        Write-Host "Conversation loaded" -ForegroundColor Green
+        Write-Host "Conversation ""$filename"" loaded" -ForegroundColor Green
     }
 
     static ImportJson() {
@@ -473,7 +508,7 @@ if ($Query) {
         "You will respond with text only, no new lines or markdown elements.  " + 
         "After you respond it will be the end of the conversation, do not say goodbye",
         "system"
-    )
+    ) | Out-Null
 
     Write-Host ([Message]::Submit($Query).FormatMessage())
     exit
