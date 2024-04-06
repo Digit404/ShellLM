@@ -9,7 +9,10 @@ param (
     [string] $Model = "gpt-3.5-turbo",
 
     [Parameter(ValueFromRemainingArguments)]
-    [string] $Query
+    [string] $Query,
+
+    [Parameter(Mandatory=$false)]
+    [string] $Load
 )
 
 $ESC = [char]27
@@ -358,16 +361,25 @@ class Message {
             }
         }
 
-        $filename += $filename -notlike "*.json" ? ".json" : ""
+        [Message]::LoadFile($filename)
+    }
 
-        $filepath = Join-Path $script:CONVERSATIONS_DIR $filename
+    static ImportJson() {
+        [Message]::ImportJson("")
+    }
 
-        if (!(Test-Path $filepath)) {
-            Write-Host "File $($filepath) not found" -ForegroundColor Red
-            return
+    static LoadFile([string]$File) {
+
+        $Path = $File + ($File -notlike "*.json" ? ".json" : "")
+
+        if (!(Test-Path $Path)) {
+            $Path = Join-Path $script:CONVERSATIONS_DIR $Path
+            if (!(Test-Path $Path)) {
+                Write-Host "File $($Path) not found" -ForegroundColor Red
+                return
+            }
         }
-
-        $json = Get-Content -Path $filepath | ConvertFrom-Json
+        $json = Get-Content -Path $Path | ConvertFrom-Json
 
         [Message]::Messages.Clear()
 
@@ -375,11 +387,7 @@ class Message {
             [Message]::new($message.content, $message.role)
         }
 
-        Write-Host "Conversation ""$filename"" loaded" -ForegroundColor Green
-    }
-
-    static ImportJson() {
-        [Message]::ImportJson("")
+        Write-Host "Conversation ""$File"" loaded" -ForegroundColor Green
     }
 
     static History () {
@@ -412,7 +420,7 @@ class Message {
     }
 
     static Goodbye() {
-        Write-Host [Message]::Submit("Goodbye!").FormatMessage()
+        Write-Host ([Message]::Submit("Goodbye!").FormatMessage())
         exit
     }
 }
@@ -515,6 +523,10 @@ if ($Query) {
 }
 
 Write-Host (WrapText "Welcome to $($COLORS.GREEN)ChatGPT$($COLORS.BRIGHTWHITE), type $($COLORS.YELLOW)/exit$($COLORS.BRIGHTWHITE) to quit or $($COLORS.YELLOW)/help$($COLORS.BRIGHTWHITE) for a list of commands")
+
+if ($Load) {
+    [Message]::LoadFile($Load)
+}
 
 while ($true) {
     Write-Host "$($COLORS.BLUE)Chat > " -NoNewline
