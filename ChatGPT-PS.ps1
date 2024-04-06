@@ -1,16 +1,38 @@
+param (
+    [Parameter(Position=0, ValueFromRemainingArguments)]
+    [string] $Query
+)
+
 $ESC = [char]27
 
 $MODEL = "gpt-4"
 
-$CONVERSATIONS_DIR = Join-Path $PSScriptRoot .\conversations\
+$CONVERSATIONS_DIR = Resolve-Path (Join-Path $PSScriptRoot .\conversations\)
 
-if (!(Test-Path $CONVERSATIONS_DIR)) {
-    New-Item -ItemType Directory -Path $CONVERSATIONS_DIR | Out-Null
+$COLORS = @{
+    RED = "$ESC[31m"
+    GREEN = "$ESC[32m"
+    YELLOW = "$ESC[33m"
+    BLUE = "$ESC[34m"
+    MAGENTA = "$ESC[35m"
+    CYAN = "$ESC[36m"
+    WHITE = "$ESC[37m"
+    BRIGHTBLACK = "$ESC[90m"
+    BRIGHTRED = "$ESC[91m"
+    BRIGHTGREEN = "$ESC[92m"
+    BRIGHTYELLOW = "$ESC[93m"
+    BRIGHTBLUE = "$ESC[94m"
+    BRIGHTMAGENTA = "$ESC[95m"
+    BRIGHTCYAN = "$ESC[96m"
+    BRIGHTWHITE = "$ESC[97m"
+    RESET = "$ESC[33m"
 }
 
 function WrapText {
     param (
+        [Parameter(Mandatory, Position=0)]
         [string]$Text,
+
         [string]$FirstIndent,
         [int]$Indent
     )
@@ -73,7 +95,8 @@ class Command {
 
     static Help() {
         foreach ($command in [Command]::Commands) {
-            Write-Host "/$(@($command.Keywords)[0])`t$($command.Description)" -ForegroundColor Yellow
+            Write-Host "/$(@($command.Keywords)[0])" -ForegroundColor DarkYellow -NoNewline
+            Write-Host "`t$($command.Description)" 
             if ($command.Usage) {
                 Write-Host "`tUSAGE: /$(@($command.Keywords)[0]) $($command.Usage)" -ForegroundColor Black
             }
@@ -88,8 +111,12 @@ class Command {
         $command = [Command]::Commands | Where-Object { $_.Keywords -contains $commandName.TrimStart('/') }
 
         if ($command) {
+            if (!$argumentsString) {
+                $command.Action.Invoke()
+                return
+            }
             # Split arguments string, if any
-            $arguments = $argumentsString -split '\s+'
+            [string]$arguments = $argumentsString -split '\s+'
             
             # Ensure we only pass the number of arguments the command expects
             $arguments = $arguments[0..($command.ArgsNum - 1)]
@@ -107,27 +134,8 @@ class Message {
     [string]$content;
     [string]$role;
 
-    static [hashtable]$COLORS = @{
-        RED = "$ESC[31m"
-        GREEN = "$ESC[32m"
-        YELLOW = "$ESC[33m"
-        BLUE = "$ESC[34m"
-        MAGENTA = "$ESC[35m"
-        CYAN = "$ESC[36m"
-        WHITE = "$ESC[37m"
-        BRIGHTBLACK = "$ESC[90m"
-        BRIGHTRED = "$ESC[91m"
-        BRIGHTGREEN = "$ESC[92m"
-        BRIGHTYELLOW = "$ESC[93m"
-        BRIGHTBLUE = "$ESC[94m"
-        BRIGHTMAGENTA = "$ESC[95m"
-        BRIGHTCYAN = "$ESC[96m"
-        BRIGHTWHITE = "$ESC[97m"
-        RESET = "$ESC[33m"
-    }
-
-    static [string] $AI_COLOR = [Message]::COLORS.YELLOW
-    static [string] $USER_COLOR = [Message]::COLORS.BLUE
+    static [string] $AI_COLOR = $script:COLORS.YELLOW
+    static [string] $USER_COLOR = $script:COLORS.BLUE
 
     static [System.Collections.ArrayList]$Messages = @()
 
@@ -145,6 +153,10 @@ class Message {
             [Message]::new($MessageContent, "user")
         }
 
+        return [Message]::Submit()
+    }
+
+    static [Message] Submit() {
         # Print thinking message
         Write-Host "Thinking...`r" -NoNewline
 
@@ -180,35 +192,49 @@ class Message {
             return $null
         }
     }
-    
-    static [string] FormatMessage([Message]$Message) {
-        if (!$Message) {
-            return ""
-        }
 
-        $messageContent = $Message.content
+    [string] GetColoredMessage () {
+        $messageContent = $this.content
 
         # If the message is not a system message, apply color formatting
-        if (!($Message.role -eq "system")) {
-            foreach ($Item in [Message]::COLORS.GetEnumerator()) {
+        if (!($this.role -eq "system")) {
+            foreach ($Item in $script:COLORS.GetEnumerator()) {
                 $messageContent = $messageContent -replace "{$($Item.Key)}", $Item.Value
             }
         }
 
-        $Indent = if ($Message.role -eq "assistant") {
-            ([Message]::AI_COLOR + "GPT: ")
-        } elseif ($Message.role -eq "user") {
-            ([Message]::USER_COLOR + "You: ")
+        $color = if ($this.role -eq "assistant") {
+            [Message]::AI_COLOR
+        } elseif ($this.role -eq "user") {
+            [Message]::USER_COLOR
         } else {
-            ([Message]::COLORS.WHITE + "Sys: ")
+            $script:COLORS.WHITE
         }
 
-        $messageContent = WrapText -Text $messageContent -FirstIndent $Indent -Indent 5
+        return $color + $messageContent
+    }
 
-        return $messageContent
+    # also seems unnecessary
+    [string] FormatHistory() {
+        $messageContent = $this.GetColoredMessage()
+
+        $Indent = if ($this.role -eq "assistant") {
+            ([Message]::AI_COLOR + "GPT: ")
+        } elseif ($this.role -eq "user") {
+            ([Message]::USER_COLOR + "You: ")
+        } else {
+            ($script:COLORS.WHITE + "Sys: ")
+        }
+
+        return WrapText -Text $messageContent -FirstIndent $Indent -Indent 5
+    }
+
+    # Keep this for now, but seems unnecessary
+    [string] FormatMessage() {
+        return WrapText $this.GetColoredMessage()
     }
     
-    static Reset([bool]$silent = $false) {
+    static Reset() {
         [Message]::Messages.Clear()
 
         [Message]::new(
@@ -219,25 +245,34 @@ class Message {
             'You can also use BRIGHT colors using {BRIGHTCOLOR}. (E.g. {BRIGHTRED}Hello{RESET})',
             "system"
         )
+    }
 
-        if (!$silent) {
-            Write-Host "Conversation reset" -ForegroundColor Green
-        }
+    static ResetLoud() {
+        [Message]::Reset()
+
+        Write-Host "Conversation reset" -ForegroundColor Green
+    }
+
+    static Retry() {
+        [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+        [Message]::Submit()
     }
 
     static ExportJson($filename) {
         while ($true) {
             if (!$filename) {
-                Write-Host (WrapText "What would you like to name the file? (Press enter for autogenerated name)")
-                $filename = Read-Host "> "
+                Write-Host (WrapText "What would you like to name the file? (Press enter to generate a name)")
+                Write-Host "> " -NoNewline
+                $filename = $global:Host.UI.ReadLine()
                 if (!$filename) {
                     # Use timestamp if you're a square
                     # $timestamp = [DateTime]::Now.ToString("yyyy-MM-dd_HH-mm-ss")
                     # $filename = "conversation-$timestamp"
                     # Ask chatgpt for a name for the conversation
 
-                    $filename = [Message]::Submit("Reply only with a good name that summarizes this conversation in a filesystem compatible string, no quotes, no colors, no file extensions")
-                    # Remove last message and response from conversation history
+                    $filename = [Message]::Submit("Reply only with a good very short name that summarizes this conversation in a filesystem compatible string, no quotes, no colors, no file extensions").content
+                    # Remove last two messages from conversation history
+                    [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
                     [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
                 }
                 elseif ($filename -eq "/cancel") {
@@ -261,10 +296,198 @@ class Message {
         $json = [Message]::Messages | ConvertTo-Json -Depth 5
 
         $json | Set-Content -Path $filepath
+
+        Write-Host "Conversation saved to $($filepath)" -ForegroundColor Green
+    }
+
+    static ExportJson() {
+        [Message]::ExportJson("")
+    }
+
+    static ImportJson($filename) {
+        Write-Host "This will clear the current conversation. Continue?"`
+        "$($script:COLORS.BRIGHTWHITE)[$($script:COLORS.GREEN)y$($script:COLORS.BRIGHTWHITE)/$($script:COLORS.RED)n$($script:COLORS.BRIGHTWHITE)]" -ForegroundColor Red
+
+        Write-Host "> " -NoNewline
+        if ($global:Host.UI.ReadLine() -ne "y") {
+            return
+        }
+
+        if (!$filename) {
+            Write-Host "Saved conversations:"
+            Get-ChildItem -Path $script:CONVERSATIONS_DIR -Filter *.json | ForEach-Object {
+                Write-Host "`t$($_.BaseName)" -ForegroundColor DarkYellow
+            }
+            Write-Host (WrapText "What is the name of the file you would like to import?")
+            Write-Host "> " -NoNewline
+            $filename = $global:Host.UI.ReadLine()
+        }
+
+        $filename += $filename -notlike "*.json" ? ".json" : ""
+
+        $filepath = Join-Path $script:CONVERSATIONS_DIR $filename
+
+        if (!(Test-Path $filepath)) {
+            Write-Host "File $($filepath) not found" -ForegroundColor Red
+            return
+        }
+
+        $json = Get-Content -Path $filepath | ConvertFrom-Json
+
+        [Message]::Messages.Clear()
+
+        foreach ($message in $json) {
+            [Message]::new($message.content, $message.role)
+        }
+
+        Write-Host "Conversation loaded" -ForegroundColor Green
+    }
+
+    static ImportJson() {
+        [Message]::ImportJson("")
+    }
+
+    static History () {
+        $nonSystemMessages = [Message]::Messages | Where-Object { $_.role -ne "system" }
+        if (!$nonSystemMessages) {
+            Write-Host "There are no messages in history" -ForegroundColor Red
+            return
+        }
+        foreach ($message in $nonSystemMessages) {
+            Write-Host ($message.FormatHistory())
+        }
+    }
+
+    static GoBack ([int]$NumBack) {
+        $nonSystemMessages = [Message]::Messages | Where-Object { $_.role -ne "system" }
+        if ($NumBack -gt $nonSystemMessages.Count) {
+            Write-Host "Reached the beginning of the conversation" -ForegroundColor Red
+            return
+        }
+
+        for ($i = 0; $i -lt $NumBack; $i++) {
+            [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+        }
+
+        Write-Host "Went back $NumBack message(s)" -ForegroundColor Green
+    }
+
+    static GoBack () {
+        [Message]::GoBack(1)
+    }
+
+    static Goodbye() {
+        Write-Host [Message]::Submit("Goodbye!").FormatMessage()
+        exit
     }
 }
+function DefineCommands {
+    [Command]::new(
+        @("bye", "goodbye"), 
+        {[Message]::Goodbye()}, 
+        "Exit the program and receive a goodbye message"
+    ) | Out-Null
 
-[Command]::new(@("exit", "quit", "e"), {exit}, "Exit the program")
-[Command]::new(@("help"), {[Command]::Help() }, "Show this help message")
+    [Command]::new(
+        @("exit", "quit", "e"), 
+        {exit}, 
+        "Exit the program immediately"
+    ) | Out-Null
 
-[Message]::Messages
+    [Command]::new(
+        @("help", "h"), 
+        {[Command]::Help()}, 
+        "Display this message again"
+    ) | Out-Null
+
+    [Command]::new(
+        @("save", "s", "export"), 
+        {
+            if ($args) {
+                [Message]::ExportJson($args[0])
+            } else {
+                [Message]::ExportJson()
+            }
+        }, 
+        "Save the current conversation to a file", 
+        1, "[filename]"
+    ) | Out-Null
+
+    [Command]::new(
+        @("load", "l", "import"), 
+        {
+            if ($args) {
+                [Message]::ImportJson($args[0])
+            } else {
+                [Message]::ImportJson()
+            }
+        }, 
+        "Load a previous conversation", 
+        1, "[filename]"
+    ) | Out-Null
+
+    [Command]::new(
+        @("hist", "history", "ls", "list"), 
+        {[Message]::History()}, 
+        "Display the conversation history"
+    ) | Out-Null
+
+    [Command]::new(
+        @("back", "b"), 
+        {
+            if ($args) {
+                [Message]::GoBack($args[0])
+            } else {
+                [Message]::GoBack()
+            }
+        }, 
+        "Go back a number of messages in the conversation", 
+        1, "[number]"
+    ) | Out-Null
+
+    [Command]::new(
+        @("retry", "r"), 
+        {[Message]::Retry()}, 
+        "Generate another response to your last message"
+    ) | Out-Null
+
+    [Command]::new(
+        @("reset"), 
+        {[Message]::ResetLoud()}, 
+        "Reset the conversation to its initial state"
+    ) | Out-Null
+}
+
+if (!(Test-Path $CONVERSATIONS_DIR)) {
+    New-Item -ItemType Directory -Path $CONVERSATIONS_DIR | Out-Null
+}
+
+[Message]::Reset()
+
+DefineCommands
+
+# AskGPT mode, include the question in the command and it will try to answer as briefly as it can
+if ($Query) {
+    [Message]::new(
+        "You will be asked one short question. You will be as brief as possible with your response, using incomplete sentences if necessary. " + 
+        "You will respond with text only, no new lines or markdown elements.  " + 
+        "After you respond it will be the end of the conversation, do not say goodbye",
+        "system"
+    )
+
+    Write-Host ([Message]::Submit($Query).FormatMessage())
+    exit
+}
+
+Write-Host (WrapText "Welcome to $($COLORS.GREEN)ChatGPT$($COLORS.BRIGHTWHITE), type $($COLORS.YELLOW)/exit$($COLORS.BRIGHTWHITE) to quit or $($COLORS.YELLOW)/help$($COLORS.BRIGHTWHITE) for a list of commands")
+
+while ($true) {
+    Write-Host "$($COLORS.BLUE)Chat > " -NoNewline
+    $prompt = $Host.UI.ReadLine()
+
+    if ($prompt[0] -eq "/") {
+        [Command]::Execute($prompt)
+    } else {
+        Write-Host ([Message]::Submit($prompt).FormatMessage())
+    }
+}
