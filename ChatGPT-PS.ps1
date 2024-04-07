@@ -1,3 +1,39 @@
+<#
+.SYNOPSIS
+    This script is a PowerShell implementation of a chatbot using OpenAI's GPT models.
+
+.DESCRIPTION
+    The script allows users to interact with the chatbot by sending messages and receiving responses from the GPT model. It supports multiple commands and provides a conversational interface.
+
+.PARAMETER Model
+    Specifies the GPT model to use for generating responses. The available options are "gpt-4", "gpt-4-turbo-preview", and "gpt-3.5-turbo". The default value is "gpt-3.5-turbo".
+
+.PARAMETER Query
+    Specifies the user's message/query to be sent to the chatbot.
+
+.PARAMETER Load
+    Specifies a file containing a conversation to load. This can be used to continue a previous conversation.
+
+.PARAMETER Key
+    Specifies the OpenAI API key to use for making API calls to the OpenAI chat/completions endpoint.
+    If not provided, the script will prompt the user to enter the API key.
+
+.NOTES
+    - This script requires an OpenAI API key to make API calls to the OpenAI chat/completions endpoint.
+    - The script uses ANSI escape codes for color formatting in the terminal.
+    - The script supports various commands that can be used to interact with the chatbot.
+    - The script provides a conversational history and allows exporting the conversation to a JSON file.
+
+.EXAMPLE
+    PS C:\> .\ChatGPT-PS.ps1 -Model "gpt-4" -Query "What is the capital of ecuador?"
+
+    This example runs the script using the "gpt-4" model and asks the question "What is the capital of ecuador?".
+
+.EXAMPLE
+    PS C:\> .\ChatGPT-PS.ps1 -Load conversation
+
+    This example loads a conversation from the "conversation.json" file within the conversations dir and continues the conversation.
+#>
 [CmdletBinding(PositionalBinding=$false)] # Important as it make it so you can throw the model param anywhere
 param (
     [Parameter(Mandatory=$false)]
@@ -12,13 +48,45 @@ param (
     [string] $Query,
 
     [Parameter(Mandatory=$false)]
-    [string] $Load
+    [Alias("l", "Import", "File", "Conversation")]
+    [string] $Load,
+
+    [Parameter(Mandatory=$false)]
+    [string] $Key
 )
 
-$ESC = [char]27
+$ESC = [char]27 # Escape char for colors
 
+# Consider making this a parameter
 $CONVERSATIONS_DIR = Resolve-Path (Join-Path $PSScriptRoot .\conversations\)
 
+# Handle key state
+if (!$env:OPENAI_API_KEY -and !$Key) {
+    Write-Host "OPEN AI API KEY NOT FOUND. GET ONE HERE: https://platform.openai.com/api-keys" -ForegroundColor Red
+    Write-Host "Please input API key, or set it as an environment variable."
+    Write-Host "> " -NoNewline
+    $Key = $Host.UI.ReadLine()
+}
+
+if (!$Key) {
+    $Key = $env:OPENAI_API_KEY
+}
+
+$response = Invoke-WebRequest `
+    -Uri https://api.openai.com/v1/models `
+    -Headers @{
+        "Authorization" = "Bearer $($Key)"
+    }
+
+if ($response.StatusCode -ne 200) {
+    Write-Host "Invalid API key. Please try again." -ForegroundColor Red
+    exit
+}
+if ($Key -ne $env:OPENAI_API_KEY) {
+    [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")
+}
+
+# Colors for the terminal
 $COLORS = @{
     RED = "$ESC[31m"
     GREEN = "$ESC[32m"
@@ -74,11 +142,11 @@ function WrapText {
 }
 
 class Command {
-    [string[]]$Keywords;
-    [string]$Description;
-    [scriptblock]$Action;
-    [int]$ArgsNum;
-    [string]$Usage;
+    [string[]]$Keywords; # The different keywords that can be used to trigger the command, the first one is the one shown to user
+    [string]$Description; # Short description of the command when /help is called
+    [scriptblock]$Action; # The action to be executed when the command is called
+    [int]$ArgsNum; # Number of arguments the command expects
+    [string]$Usage; # Usage example for the command without the command itself
 
     static [System.Collections.ArrayList]$Commands = @()
 
@@ -103,7 +171,7 @@ class Command {
         [Command]::Commands.Add($this)
     }
 
-    static Help() {
+    static Help() { # Write the help command
         foreach ($command in [Command]::Commands) {
             Write-Host "/$(@($command.Keywords)[0])" -ForegroundColor DarkYellow -NoNewline
             Write-Host "`t$($command.Description)" 
@@ -113,7 +181,7 @@ class Command {
         }
     }
 
-    static Execute($prompt) {
+    static Execute($prompt) { # Execute the command. If you see errors pointing to this the problem is likely elsewhere
         # Split up prompt into command name and the rest as arguments
         $commandName, $argumentsString = $prompt -split '\s+', 2
 
@@ -156,7 +224,7 @@ class Message {
         [Message]::Messages.Add($this)
     }
 
-    static [Message] Submit([string]$MessageContent) {
+    static [Message] Submit([string]$MessageContent) { # Overload for submit to add a message from the user first
 
         # It doesn't exist if it's not added to the list
         if ($MessageContent) {
@@ -166,7 +234,7 @@ class Message {
         return [Message]::Submit()
     }
 
-    static [Message] Submit() {
+    static [Message] Submit() { # Submit messages to the GPT model and receive a response
         # Print thinking message
         Write-Host "Thinking...`r" -NoNewline
 
@@ -182,7 +250,7 @@ class Message {
             -Uri https://api.openai.com/v1/chat/completions `
             -Method Post `
             -Headers @{
-                "Authorization" = "Bearer $($env:OPENAI_API_KEY)"; 
+                "Authorization" = "Bearer $script:Key"; 
                 "Content-Type" = "application/json"
             } `
             -Body $body | ConvertFrom-Json
@@ -195,15 +263,17 @@ class Message {
             # Clear the thinking message on the event that the message is very short.
             Write-Host "              `r" -NoNewline
 
+            # Returning the MESSAGE object, not a string
             return $assistantMessage
             
         } catch {
+            # Catching errors caused by the API call
             Write-Host "An error occurred: $_" -ForegroundColor Red
             return $null
         }
     }
 
-    [string] GetColoredMessage () {
+    [string] GetColoredMessage () { # Get the message content with the appropriate color formatting
         $messageContent = $this.content
 
         # If the message is not a system message, apply color formatting
@@ -224,7 +294,7 @@ class Message {
         return $color + $messageContent
     }
 
-    # also seems unnecessary
+    # also seems unnecessary could merge with history
     [string] FormatHistory() {
         $messageContent = $this.GetColoredMessage()
 
@@ -247,6 +317,7 @@ class Message {
     static Reset() {
         [Message]::Messages.Clear()
 
+        # Default message to start the conversation and inform the bot on how to use the colors
         [Message]::new(
             'You are communicating through the terminal. ' +
             'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want. ' +
@@ -257,7 +328,7 @@ class Message {
         )
     }
 
-    static ResetLoud() {
+    static ResetLoud() { # Reset the conversation and inform the user
         [Message]::Reset()
 
         Write-Host "Conversation reset" -ForegroundColor Green
@@ -291,6 +362,7 @@ class Message {
                 }
             }
             if ($filename.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) {
+                # Don't allow invalid characters in the filename
                 Write-Host "Invalid name." -ForegroundColor Red
                 $filename = ""
             } else {
@@ -372,6 +444,7 @@ class Message {
 
         $Path = $File + ($File -notlike "*.json" ? ".json" : "")
 
+        # Check if the file exists first in the contenxt of the user's current directory, then in the conversations directory
         if (!(Test-Path $Path)) {
             $Path = Join-Path $script:CONVERSATIONS_DIR $Path
             if (!(Test-Path $Path)) {
@@ -379,6 +452,7 @@ class Message {
                 return
             }
         }
+
         $json = Get-Content -Path $Path | ConvertFrom-Json
 
         [Message]::Messages.Clear()
@@ -391,24 +465,30 @@ class Message {
     }
 
     static History () {
+        # Get all non-system messages
         $nonSystemMessages = [Message]::Messages | Where-Object { $_.role -ne "system" }
+
         if (!$nonSystemMessages) {
             Write-Host "There are no messages in history" -ForegroundColor Red
             return
         }
+
         foreach ($message in $nonSystemMessages) {
             Write-Host ($message.FormatHistory())
         }
     }
 
     static GoBack ([int]$NumBack) {
+        # Don't remove the system message
         $nonSystemMessages = [Message]::Messages | Where-Object { $_.role -ne "system" }
+
         if ($NumBack -gt $nonSystemMessages.Count) {
             Write-Host "Reached the beginning of the conversation" -ForegroundColor Red
             return
         }
 
-        for ($i = 0; $i -lt $NumBack; $i++) {
+        # Go back 2 messages (1 user and one assistant message)
+        for ($i = 0; $i -lt $NumBack * 2; $i++) {
             [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
         }
 
@@ -524,6 +604,7 @@ if ($Query) {
 
 Write-Host (WrapText "Welcome to $($COLORS.GREEN)ChatGPT$($COLORS.BRIGHTWHITE), type $($COLORS.YELLOW)/exit$($COLORS.BRIGHTWHITE) to quit or $($COLORS.YELLOW)/help$($COLORS.BRIGHTWHITE) for a list of commands")
 
+# Load a conversation from a file if specified
 if ($Load) {
     [Message]::LoadFile($Load)
 }
@@ -532,6 +613,7 @@ while ($true) {
     Write-Host "$($COLORS.BLUE)Chat > " -NoNewline
     $prompt = $Host.UI.ReadLine()
 
+    # Do command handling
     if ($prompt[0] -eq "/") {
         [Command]::Execute($prompt)
     } else {
