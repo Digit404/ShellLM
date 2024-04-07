@@ -83,6 +83,7 @@ if ($response.StatusCode -ne 200) {
     Write-Host "Invalid API key. Please try again." -ForegroundColor Red
     exit
 }
+
 if ($Key -ne $env:OPENAI_API_KEY) {
     [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")
 }
@@ -383,10 +384,6 @@ class Message {
         Write-Host "Conversation saved to $($filepath)" -ForegroundColor Green
     }
 
-    static ExportJson() {
-        [Message]::ExportJson("")
-    }
-
     static ImportJson($filename) {
         if (!$filename) {
             Write-Host "This will clear the current conversation. Type ""/cancel"" to cancel." -ForegroundColor Red
@@ -437,10 +434,6 @@ class Message {
         [Message]::LoadFile($filename)
     }
 
-    static ImportJson() {
-        [Message]::ImportJson("")
-    }
-
     static LoadFile([string]$File) {
 
         $Path = $File + ($File -notlike "*.json" ? ".json" : "")
@@ -480,6 +473,10 @@ class Message {
     }
 
     static GoBack ([int]$NumBack) {
+        if ($NumBack -lt 1) {
+            $NumBack = 1
+        }
+
         # Don't remove the system message
         $nonSystemMessages = [Message]::Messages | Where-Object { $_.role -ne "system" }
 
@@ -496,13 +493,26 @@ class Message {
         Write-Host "Went back $NumBack message(s)" -ForegroundColor Green
     }
 
-    static GoBack () {
-        [Message]::GoBack(1)
-    }
-
     static Goodbye() {
         Write-Host ([Message]::Submit("Goodbye!").FormatMessage())
         exit
+    }
+
+    static ChangeModel ([string]$Model) {
+        $Models = "gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"
+
+        if (!$Model) {
+            Write-Host "Current model: $script:MODEL`nAvailable models: $($Models -join ", ")" -ForegroundColor Yellow
+            return
+        }
+        
+        if ($Models -notcontains $Model) {
+            Write-Host "Invalid model. Available models are $($Models -join ", ")" -ForegroundColor Red
+            return
+        }
+
+        $script:MODEL = $Model
+        Write-Host "Model changed to $Model" -ForegroundColor Green
     }
 }
 function DefineCommands {
@@ -528,11 +538,7 @@ function DefineCommands {
     [Command]::new(
         @("save", "s", "export"), 
         {
-            if ($args) {
-                [Message]::ExportJson($args[0])
-            } else {
-                [Message]::ExportJson()
-            }
+            [Message]::ExportJson($args[0])
         }, 
         "Save the current conversation to a file", 
         1, "[filename]"
@@ -541,11 +547,7 @@ function DefineCommands {
     [Command]::new(
         @("load", "l", "import"), 
         {
-            if ($args) {
-                [Message]::ImportJson($args[0])
-            } else {
-                [Message]::ImportJson()
-            }
+            [Message]::ImportJson($args[0])
         }, 
         "Load a previous conversation", 
         1, "[filename]"
@@ -560,11 +562,7 @@ function DefineCommands {
     [Command]::new(
         @("back", "b"), 
         {
-            if ($args) {
-                [Message]::GoBack($args[0])
-            } else {
-                [Message]::GoBack()
-            }
+            [Message]::GoBack($args[0])
         }, 
         "Go back a number of messages in the conversation", 
         1, "[number]"
@@ -580,6 +578,15 @@ function DefineCommands {
         @("reset", "clear"), 
         {[Message]::ResetLoud()}, 
         "Reset the conversation to its initial state"
+    ) | Out-Null
+
+    [Command]::new(
+        @("model", "m"), 
+        {
+            [Message]::ChangeModel($args[0])
+        }, 
+        "Change the model used for generating responses", 
+        1, "[model]"
     ) | Out-Null
 }
 
