@@ -34,6 +34,7 @@
 
     This example loads a conversation from the "conversation.json" file within the conversations dir and continues the conversation.
 #>
+
 [CmdletBinding(PositionalBinding=$false)] # Important as it make it so you can throw the model param anywhere
 param (
     [Parameter(Mandatory=$false)]
@@ -320,7 +321,7 @@ class Message {
         # Default message to start the conversation and inform the bot on how to use the colors
         [Message]::new(
             'You are communicating through the terminal. ' +
-            'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want. ' +
+            'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want, and {RESET} to go back. ' +
             'Do not use markdown. If you write code, do not use "```". Use colors for syntax highlighting instead. ' +
             'Colors available are RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, RESET. ' +
             'You can also use BRIGHT colors using {BRIGHTCOLOR}. (E.g. {BRIGHTRED}Hello{RESET})',
@@ -505,6 +506,7 @@ class Message {
     }
 }
 function DefineCommands {
+    [Command]::Commands.Clear()
     [Command]::new(
         @("bye", "goodbye"), 
         {[Message]::Goodbye()}, 
@@ -512,7 +514,7 @@ function DefineCommands {
     ) | Out-Null
 
     [Command]::new(
-        @("exit", "quit", "e"), 
+        @("exit", "quit", "e", "q"), 
         {exit}, 
         "Exit the program immediately"
     ) | Out-Null
@@ -575,7 +577,7 @@ function DefineCommands {
     ) | Out-Null
 
     [Command]::new(
-        @("reset"), 
+        @("reset", "clear"), 
         {[Message]::ResetLoud()}, 
         "Reset the conversation to its initial state"
     ) | Out-Null
@@ -594,7 +596,7 @@ if ($Query) {
     [Message]::new(
         "You will be asked one short question. You will be as brief as possible with your response, using incomplete sentences if necessary. " + 
         "You will respond with text only, no new lines or markdown elements.  " + 
-        "After you respond it will be the end of the conversation, do not say goodbye",
+        "After you respond it will be the end of the conversation, do not say goodbye.",
         "system"
     ) | Out-Null
 
