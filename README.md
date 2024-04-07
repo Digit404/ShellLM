@@ -10,6 +10,7 @@ This project is a terminal-based interface for interacting with OpenAI's ChatGPT
 - Saving and loading conversations from JSON files
 - Retry option to generate alternative responses
 - AskGPT mode for brief answers to questions
+- Supports GPT-3.5 GPT-4 and GPT-4-turbo-preview
 
 ## Installation
 
@@ -40,7 +41,7 @@ This project is a terminal-based interface for interacting with OpenAI's ChatGPT
 
 	- Please note that the above instructions assume that you have the necessary permissions to set environment variables on your system.
 
-3. Clone the repository:
+3. Clone the repository, or download and run the script:
 
 	```powershell
 	git clone https://github.com/Digit404/ChatGPT-PS.git
@@ -72,14 +73,16 @@ This project is a terminal-based interface for interacting with OpenAI's ChatGPT
 
 The following commands are available within the terminal interface:
 
+- `/bye` or `/goodbye`: Exit and receive a goodbye message.
 - `/help`: Display a list of available commands and their descriptions.
-- `/exit` or `/e`: Exit the program and receive a goodbye message.
+- `/exit` or `/e`: Exit the program immediately.
 - `/save [filename]` or `/s [filename]`: Save the current conversation to a JSON file.
-- `/load [filename] [-y]` or `/l [filename] [-y]`: Load a previous conversation from a JSON file.
-- `/hist`, `/list`, or `/ls`: View the history of the conversation.
-- `/back [number]` or `/b [number]`: Go back in the conversation a certain number of times.
+- `/load [filename]` or `/l [filename]`: Load a previous conversation from a JSON file.
+- `/hist`, `/list`, or `/ls`: Display the conversation history.
+- `/back [number]` or `/b [number]`: Go back a number of messages in the conversation.
 - `/retry` or `/r`: Generate another response to your last message.
-- `/reset`: Reset the conversation to its initial state.
+- `/reset` or `/clear`: Reset the conversation to its initial state.
+- `/model` or `/m`: Change the model used for generating responses.
 
 ## Troubleshooting
 
