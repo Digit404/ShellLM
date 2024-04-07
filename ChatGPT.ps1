@@ -73,6 +73,7 @@ if (!$Key) {
     $Key = $env:OPENAI_API_KEY
 }
 
+# This is just to confirm the key is valid, does not actually use the list of models.
 $response = Invoke-WebRequest `
     -Uri https://api.openai.com/v1/models `
     -Headers @{
@@ -502,8 +503,19 @@ class Message {
         $Models = "gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"
 
         if (!$Model) {
-            Write-Host "Current model: $script:MODEL`nAvailable models: $($Models -join ", ")" -ForegroundColor Yellow
+            Write-Host "Current model: $script:MODEL" -ForegroundColor Blue
+            Write-Host "Available models:" -ForegroundColor DarkYellow
+
+            foreach ($model in $Models) {
+                $index = $Models.IndexOf($model) + 1
+                Write-Host "  [$index]`t$model" -ForegroundColor DarkYellow
+            }
+
             return
+        }
+
+        if ([int]::TryParse($Model, [ref]$null)) {
+            $Model = $Models[[int]$Model - 1]
         }
         
         if ($Models -notcontains $Model) {

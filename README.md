@@ -60,13 +60,13 @@ This project is a terminal-based interface for interacting with OpenAI's ChatGPT
 1. Start the ChatGPT terminal interface:
 
 	```powershell
-	.\ChatGPT-PS.ps1
+	.\ChatGPT.ps1
 	```
 
 2. Or add the prompt after the file to get a brief answer to your question
 
 	```powershell
-	.\ChatGPT-PS.ps1 "What is the capital of Ecuador?"
+	.\ChatGPT.ps1 "What is the capital of Ecuador?"
 	```
 
 ## Commands
