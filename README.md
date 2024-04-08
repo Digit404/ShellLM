@@ -74,32 +74,19 @@ This project is a terminal-based interface for interacting with OpenAI's ChatGPT
 
 The following commands are available within the terminal interface:
 
-- `/bye` (`/goodbye`): 
-	- Exit and receive a goodbye message.
-- `/help` (`/h`): 
-	- Display a list of available commands and their descriptions.
-- `/exit` (`/e`, `/quit`, `/q`): 
-	- Exit the program immediately.
-- `/save [filename]` (`/s`, `/export`): 
-	- Save the current conversation to a JSON file.
-- `/load [filename]` (`/l`, `/import`): 
-	- Load a previous conversation from a JSON file.
-- `/hist` (`/list`, `/ls`, `/history`): 
-	- Display the conversation history.
-- `/back [number]` (`/b`): 
-	- Go back a number of messages in the conversation.
-- `/retry` (`/r`): 
-	- Generate another response to your last message.
-- `/reset` (`/clear`): 
-	- Reset the conversation to its initial state.
-- `/model` (`/m`): 
-	- Change the model used for generating responses.
-- `/imagine` (`/generate`, `/image`, `/img`, `/i`): 
-	- Generate an image based on a given prompt.
-- `/copy [number of messages back]` (`/c`, `/cp`): 
-	- Copy the last response to the clipboard (without formatting).
-- `/paste [prompt]` (`/p`, `/clipboard`): 
-	- Give the model the content of your clipboard as context.
+- `/bye` (`/goodbye`): Exit and receive a goodbye message.
+- `/help` (`/h`): Display a list of available commands and their descriptions.
+- `/exit` (`/e`, `/quit`, `/q`): Exit the program immediately.
+- `/save [filename]` (`/s`, `/export`): Save the current conversation to a JSON file.
+- `/load [filename]` (`/l`, `/import`): Load a previous conversation from a JSON file.
+- `/hist` (`/list`, `/ls`, `/history`): Display the conversation history.
+- `/back [number]` (`/b`): Go back a number of messages in the conversation.
+- `/retry` (`/r`): Generate another response to your last message.
+- `/reset` (`/clear`): Reset the conversation to its initial state.
+- `/model [model]` (`/m`): Change the model used for generating responses.
+- `/imagine {prompt}` (`/generate`, `/image`, `/img`, `/i`): Generate an image based on a given prompt.
+- `/copy [number of messages back]` (`/c`, `/cp`): Copy the last response to the clipboard (without formatting).
+- `/paste [prompt]` (`/p`, `/clipboard`): Give the model the content of your clipboard as context.
 
 ## Troubleshooting
 
