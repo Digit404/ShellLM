@@ -360,7 +360,7 @@ class Message {
             $script:COLORS.WHITE
         }
 
-        return $color + $messageContent
+        return $color + $messageContent + $script:COLORS.BRIGHTWHITE
     }
 
     # also seems unnecessary could merge with history
@@ -784,8 +784,22 @@ if ($Query) {
         "system"
     ) | Out-Null
 
-    Write-Host ([Message]::Query($Query).FormatMessage())
-    exit
+    # Give it a little memory and context because clarifications are helpful
+    if ($global:LastQuery) {
+        [Message]::AddMessage($global:LastQuery, "user") | Out-Null
+    }
+
+    if ($global:LastResponse) {
+        [Message]::AddMessage($global:LastResponse, "assistant") | Out-Null
+    }
+
+    $global:LastQuery = $Query
+
+    $response = [Message]::Query($Query)
+
+    $global:LastResponse = $response.content
+
+    return ($response.content)
 }
 
 Write-Host (WrapText "Welcome to $($COLORS.GREEN)ChatGPT$($COLORS.BRIGHTWHITE), type $($COLORS.YELLOW)/exit$($COLORS.BRIGHTWHITE) to quit or $($COLORS.YELLOW)/help$($COLORS.BRIGHTWHITE) for a list of commands")
@@ -796,7 +810,7 @@ if ($Load) {
 }
 
 while ($true) {
-    Write-Host "$($COLORS.BLUE)Chat > " -NoNewline
+    Write-Host "Chat > " -NoNewline -ForegroundColor Blue
     $prompt = $Host.UI.ReadLine()
 
     # Do command handling
