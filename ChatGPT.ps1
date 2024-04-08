@@ -45,6 +45,13 @@ param (
     )]
     [string] $Model = "gpt-3.5-turbo",
 
+    [Parameter(Mandatory=$false)]
+    [ValidateSet(
+        "dall-e-2",
+        "dall-e-3"
+    )]
+    [string] $ImageModel = "dall-e-2",
+
     [Parameter(ValueFromRemainingArguments)]
     [string] $Query,
 
@@ -59,7 +66,21 @@ param (
 $ESC = [char]27 # Escape char for colors
 
 # Consider making this a parameter
-$CONVERSATIONS_DIR = Resolve-Path (Join-Path $PSScriptRoot .\conversations\)
+$CONVERSATIONS_DIR = Join-Path $PSScriptRoot .\conversations\
+
+if (!(Test-Path $CONVERSATIONS_DIR)) {
+    New-Item -ItemType Directory -Path $CONVERSATIONS_DIR | Out-Null
+}
+
+$CONVERSATIONS_DIR = Resolve-Path ($CONVERSATIONS_DIR)
+
+$IMAGES_DIR = Join-Path $PSScriptRoot .\images\
+
+if (!(Test-Path $IMAGES_DIR)) {
+    New-Item -ItemType Directory -Path $IMAGES_DIR | Out-Null
+}
+
+$IMAGES_DIR = Resolve-Path ($IMAGES_DIR)
 
 # Handle key state
 if (!$env:OPENAI_API_KEY -and !$Key) {
@@ -176,10 +197,16 @@ class Command {
 
     static Help() { # Write the help command
         foreach ($command in [Command]::Commands) {
-            Write-Host "/$(@($command.Keywords)[0])" -ForegroundColor DarkYellow -NoNewline
-            Write-Host "`t$($command.Description)" 
+            $keyword = @($command.Keywords)[0]
+            Write-Host "/$($keyword)" -ForegroundColor DarkYellow -NoNewline
+            if ($keyword.Length -gt 6) {
+                Write-Host "`t" -NoNewline
+            } else {
+                Write-Host "`t`t" -NoNewline
+            }
+            Write-Host "$($command.Description)" 
             if ($command.Usage) {
-                Write-Host "`tUSAGE: /$(@($command.Keywords)[0]) $($command.Usage)" -ForegroundColor Black
+                Write-Host "`t`tUSAGE: /$($keyword) $($command.Usage)" -ForegroundColor Black
             }
         }
     }
@@ -196,11 +223,17 @@ class Command {
                 $command.Action.Invoke()
                 return
             }
-            # Split arguments string, if any
-            [string]$arguments = $argumentsString -split '\s+'
-            
-            # Ensure we only pass the number of arguments the command expects
-            $arguments = @($arguments)[0..($command.ArgsNum - 1)]
+
+            # -1 Args means that the command can take any number of args
+            if ($command.ArgsNum -eq -1) {
+                $arguments = $argumentsString
+            } else {
+                # Split arguments string, if any
+                $arguments = $argumentsString -split '\s+'
+                
+                # Ensure we only pass the number of arguments the command expects
+                $arguments = @($arguments)[0..($command.ArgsNum - 1)]
+            }
 
             # Dynamically invoke the script block with the correct number of arguments
             $command.Action.Invoke($arguments)
@@ -218,20 +251,29 @@ class Message {
     static [string] $AI_COLOR = $script:COLORS.YELLOW
     static [string] $USER_COLOR = $script:COLORS.BLUE
 
+    static [string] $CHAT_URL = "https://api.openai.com/v1/chat/completions"
+    static [string] $IMAGE_URL = "https://api.openai.com/v1/images/generations"
+
     static [System.Collections.ArrayList]$Messages = @()
 
     Message([string]$content, [string]$role) {
         $this.content = $content
         $this.role = $role ? $role : "user"
-
-        [Message]::Messages.Add($this)
     }
 
-    static [Message] Submit([string]$MessageContent) { # Overload for submit to add a message from the user first
+    static [Message] AddMessage ([string]$content, [string]$role) {
+        $message = [Message]::new($content, $role)
+
+        [Message]::Messages.Add($message)
+
+        return $message
+    }
+
+    static [Message] Query([string]$MessageContent) { # Wrapper for submit to add a message from the user first
 
         # It doesn't exist if it's not added to the list
         if ($MessageContent) {
-            [Message]::new($MessageContent, "user")
+            [Message]::AddMessage($MessageContent, "user")
         }
 
         return [Message]::Submit()
@@ -241,39 +283,57 @@ class Message {
         # Print thinking message
         Write-Host "Thinking...`r" -NoNewline
 
-        try {
             # Define body for API call
             $body = @{
                 model = $script:MODEL; 
                 messages = [Message]::Messages
-            } | ConvertTo-Json -Compress
+            }
 
             # Main API call to OpenAI
-            $response = Invoke-WebRequest `
-            -Uri https://api.openai.com/v1/chat/completions `
-            -Method Post `
-            -Headers @{
-                "Authorization" = "Bearer $script:Key"; 
-                "Content-Type" = "application/json"
-            } `
-            -Body $body | ConvertFrom-Json
+            $response = [Message]::Call([Message]::CHAT_URL, $body)
 
-            $assistantMessage = [Message]::new(
-                $response.choices[0].message.content, 
-                $response.choices[0].message.role
-            )
+            $assistantMessage = [Message]::AddMessage($response.choices[0].message.content, $response.choices[0].message.role)
 
             # Clear the thinking message on the event that the message is very short.
             Write-Host "              `r" -NoNewline
 
             # Returning the MESSAGE object, not a string
             return $assistantMessage
-            
+    }
+
+    static [psobject] Call([string]$url, [hashtable]$body) {
+        try {
+            $bodyJSON = $body | ConvertTo-Json -Compress
+
+            # Main API call to OpenAI
+            $response = Invoke-WebRequest `
+            -Uri $url `
+            -Method Post `
+            -Headers @{
+                "Authorization" = "Bearer $script:Key"; 
+                "Content-Type" = "application/json"
+            } `
+            -Body $bodyJSON | ConvertFrom-Json
+
+            return $response
         } catch {
             # Catching errors caused by the API call
             Write-Host "An error occurred: $_" -ForegroundColor Red
             return $null
         }
+    }
+
+    static [string] Whisper($Prompt) {
+        # submit without adding anything to the conversation or [Message]::Messages
+
+        [Message]::AddMessage($Prompt, "system")
+
+        $response = [Message]::Submit().content
+
+        [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+        [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+
+        return $response
     }
 
     [string] GetColoredMessage () { # Get the message content with the appropriate color formatting
@@ -321,7 +381,7 @@ class Message {
         [Message]::Messages.Clear()
 
         # Default message to start the conversation and inform the bot on how to use the colors
-        [Message]::new(
+        [Message]::AddMessage(
             'You are communicating through the terminal. ' +
             'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want, and {RESET} to go back. ' +
             'Do not use markdown. If you write code, do not use "```". Use colors for syntax highlighting instead. ' +
@@ -354,10 +414,7 @@ class Message {
                     # $filename = "conversation-$timestamp"
                     # Ask chatgpt for a name for the conversation
 
-                    $filename = [Message]::Submit("Reply only with a good very short name that summarizes this conversation in a filesystem compatible string, no quotes, no colors, no file extensions").content
-                    # Remove last two messages from conversation history
-                    [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
-                    [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+                    $filename = [Message]::Whisper("Reply only with a good very short name that summarizes this conversation in a filesystem compatible string, no quotes, no colors, no file extensions")
                 }
                 elseif ($filename -eq "/cancel") {
                     Write-Host "Export canceled" -ForegroundColor Red
@@ -413,8 +470,9 @@ class Message {
 
             # If the input is a number, use it to select the conversation
             if ([int]::TryParse($filename, [ref]$null)) {
-                if ($filename -gt 0 -and $filename -lt $conversations.Count + 1) {
-                    $filename = $conversations[[int]$filename - 1].BaseName
+                [int]$index = $filename - 1
+                if ($index -ge 0 -and $index -lt $conversations.Count) {
+                    $filename = $conversations[$index].BaseName
                 } else {
                     Write-Host "Invalid number" -ForegroundColor Red
                     return
@@ -453,7 +511,7 @@ class Message {
         [Message]::Messages.Clear()
 
         foreach ($message in $json) {
-            [Message]::new($message.content, $message.role)
+            [Message]::AddMessage($message.content, $message.role)
         }
 
         Write-Host "Conversation ""$File"" loaded" -ForegroundColor Green
@@ -495,21 +553,35 @@ class Message {
     }
 
     static Goodbye() {
-        Write-Host ([Message]::Submit("Goodbye!").FormatMessage())
+        Write-Host ([Message]::Query("Goodbye!").FormatMessage())
         exit
     }
 
     static ChangeModel ([string]$Model) {
-        $Models = "gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"
+        $Models = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo-preview"
+        $ImageModels = "dall-e-2", "dall-e-3"
 
         if (!$Model) {
-            Write-Host "Current model: $script:MODEL" -ForegroundColor Blue
-            Write-Host "Available models:" -ForegroundColor DarkYellow
+            Write-Host "Current model:`n"
+            Write-Host "Text:`t$script:MODEL" -ForegroundColor DarkYellow
+            Write-Host "Image:`t$script:ImageModel" -ForegroundColor Blue
+
+            Write-Host "`nAvailable models:"
+            Write-Host "`nText Models:" -ForegroundColor DarkYellow
 
             foreach ($model in $Models) {
                 $index = $Models.IndexOf($model) + 1
                 Write-Host "  [$index]`t$model" -ForegroundColor DarkYellow
             }
+
+            Write-Host "`nImage Models:" -ForegroundColor Blue
+
+            foreach ($model in $ImageModels) {
+                $index = $ImageModels.IndexOf($model) + 97
+                Write-Host "  [$([System.Convert]::ToChar($index))]`t$model" -ForegroundColor Blue
+            }
+
+            Write-Host "`nChange model by typing /model [model]"
 
             return
         }
@@ -517,16 +589,63 @@ class Message {
         if ([int]::TryParse($Model, [ref]$null)) {
             $Model = $Models[[int]$Model - 1]
         }
-        
-        if ($Models -notcontains $Model) {
-            Write-Host "Invalid model. Available models are $($Models -join ", ")" -ForegroundColor Red
+
+        if ([char]::TryParse($Model, [ref]$null)) {
+            Write-Host ($ImageModels[[int][char]::ToUpper($Model) - 65])
+            $Model = $ImageModels[[int][char]::ToUpper($Model) - 65]
+        }
+
+        if ($Models -contains $Model) {
+            $script:MODEL = $Model
+            Write-Host "Model changed to $Model" -ForegroundColor Green
+        } elseif ($ImageModels -contains $Model) {
+            $script:ImageModel = $Model
+            Write-Host "Image model changed to $Model" -ForegroundColor Green
+        } else {
+            Write-Host "Invalid model." -ForegroundColor Red
+            [Message]::ChangeModel("")
+        }
+    }
+
+    static GenerateImage([string]$Prompt) {
+        if (!$Prompt) {
+            Write-Host "Please provide a prompt for the image generation." -ForegroundColor Red
             return
         }
 
-        $script:MODEL = $Model
-        Write-Host "Model changed to $Model" -ForegroundColor Green
+        $Message = "Create a detailed image generation prompt for DALL-E based on the following request, include nothing other than the description in plain text: $Prompt"
+        [Message]::AddMessage($Message, "system")
+
+        $prompt = [Message]::Submit().content
+
+        Write-Host "Imagining...`r" -NoNewline
+
+        $body = @{
+            model = $script:ImageModel; 
+            prompt = $prompt;
+            n = 1;
+            size = "1024x1024"
+        }
+
+        $response = [Message]::Call([Message]::IMAGE_URL, $body)
+
+        $url = $response.data[0].url
+
+        $filename = [Message]::Whisper("Reply only with a filename for the image, no whitespace, no quotes, no file extensions")
+
+        $outputPath = Join-Path $script:IMAGES_DIR "$filename.png"
+
+        Invoke-WebRequest -Uri $url -OutFile $outputPath
+
+        Write-Host "              `r" -NoNewline
+
+        Write-Host "Image created at ""$outputPath""" -ForegroundColor Green
+
+        [Message]::AddMessage("Image created.", "system")
+        Write-Host ([Message]::Submit().FormatMessage())
     }
 }
+
 function DefineCommands {
     [Command]::Commands.Clear()
     [Command]::new(
@@ -600,10 +719,15 @@ function DefineCommands {
         "Change the model used for generating responses", 
         1, "[model]"
     ) | Out-Null
-}
 
-if (!(Test-Path $CONVERSATIONS_DIR)) {
-    New-Item -ItemType Directory -Path $CONVERSATIONS_DIR | Out-Null
+    [Command]::new(
+        @("imagine", "image", "generate", "img", "i"), 
+        {
+            [Message]::GenerateImage($args[0])
+        }, 
+        "Generate an image based on a prompt", 
+        -1, "[prompt]"
+    ) | Out-Null
 }
 
 [Message]::Reset()
@@ -612,14 +736,14 @@ DefineCommands
 
 # AskGPT mode, include the question in the command and it will try to answer as briefly as it can
 if ($Query) {
-    [Message]::new(
+    [Message]::AddMessage(
         "You will be asked one short question. You will be as brief as possible with your response, using incomplete sentences if necessary. " + 
         "You will respond with text only, no new lines or markdown elements.  " + 
         "After you respond it will be the end of the conversation, do not say goodbye.",
         "system"
     ) | Out-Null
 
-    Write-Host ([Message]::Submit($Query).FormatMessage())
+    Write-Host ([Message]::Query($Query).FormatMessage())
     exit
 }
 
@@ -638,6 +762,6 @@ while ($true) {
     if ($prompt[0] -eq "/") {
         [Command]::Execute($prompt)
     } else {
-        Write-Host ([Message]::Submit($prompt).FormatMessage())
+        Write-Host ([Message]::Query($prompt).FormatMessage())
     }
 }

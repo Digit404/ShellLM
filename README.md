@@ -10,7 +10,8 @@ This project is a terminal-based interface for interacting with OpenAI's ChatGPT
 - Saving and loading conversations from JSON files
 - Retry option to generate alternative responses
 - AskGPT mode for brief answers to questions
-- Supports GPT-3.5 GPT-4 and GPT-4-turbo-preview
+- Supports GPT-3.5, GPT-4, and GPT-4-turbo-preview
+- Image generation: Generate images using the DALL-E API. The generated images are saved in the `.\images` folder.
 
 ## Installation
 
@@ -83,6 +84,7 @@ The following commands are available within the terminal interface:
 - `/retry` or `/r`: Generate another response to your last message.
 - `/reset` or `/clear`: Reset the conversation to its initial state.
 - `/model` or `/m`: Change the model used for generating responses.
+- `/imagine` or `/generate`: Generate an image based on a given prompt.
 
 ## Troubleshooting
 
