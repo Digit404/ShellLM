@@ -864,7 +864,7 @@ function DefineCommands {
     [Command]::new(
         ("paste", "clipboard", "p"), 
         {[Message]::GiveClipboard($args[0])}, 
-        "Give the bot the content of your clipboard as context", 
+        "Give the model the content of your clipboard as context", 
         -1, "[prompt]"
     ) | Out-Null
 }
