@@ -570,14 +570,20 @@ class Message {
         # Don't remove the system message
         $nonSystemMessages = [Message]::Messages | Where-Object { $_.role -ne "system" }
 
-        if ($NumBack -gt $nonSystemMessages.Count) {
-            Write-Host "Reached the beginning of the conversation" -ForegroundColor Red
+        if ($NumBack * 2 -ge $nonSystemMessages.Count) {
+            Write-Host "Reached the beginning of the conversation" -ForegroundColor Yellow
+            [Message]::Reset()
             return
         }
 
         # Go back 2 messages (1 user and one assistant message)
         for ($i = 0; $i -lt $NumBack * 2; $i++) {
             [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+
+            # Remove pesky invisible system messages created by image generation
+            if ([Message]::Messages[-1].role -eq "system" -and [Message]::Messages.Length -gt 1){
+                [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+            }
         }
 
         Write-Host "Went back $NumBack message(s)" -ForegroundColor Green
@@ -696,30 +702,80 @@ class Message {
         [Message]::AddMessage("Image created.", "system")
         Write-Host ([Message]::Submit().FormatMessage())
     }
+
+    static GiveClipboard([string]$Prompt) {
+        # Function to give the bot the content of your clipboard as context, supplimenting the need for multiline messages
+        $ClipboardContent = Get-Clipboard
+
+        # Add the messages in this order because it makes more sense to me
+        [Message]::AddMessage($prompt, "user")
+        [Message]::AddMessage("Contents of user clipboard: $ClipboardContent", "system")
+
+        Write-Host "Clipboard content added for context:`n" -ForegroundColor Green
+
+        foreach ($line in $ClipboardContent -split '\r?\n') {
+            Write-Host (WrapText -Text $line -Indent 5)
+        }
+
+        Write-Host ""
+
+        Write-Host ([Message]::Submit().FormatMessage())
+    }
+
+    Copy () {
+        $MessageContent = $this.content
+
+        # Remove all color information from the message
+        foreach ($Item in $script:COLORS.GetEnumerator()) {
+            $MessageContent = $MessageContent -replace "{$($Item.Key)}", ""
+        }
+
+        Set-Clipboard -Value $MessageContent
+    }
+
+    static CopyMessage ([int]$number) {
+        if ($number -lt 1) {
+            $number = 1
+        }
+
+        $message = [Message]::Messages[-$number]
+
+        if ($message) {
+            $message.Copy()
+            if ($number -eq 1) {
+                Write-Host "Last response copied to clipboard." -ForegroundColor Green
+            } else {
+                $index = [Message]::Messages.IndexOf($message) + 1
+                Write-Host "Response $index copied to clipboard." -ForegroundColor Green
+            }
+        } else {
+            Write-Host "Message not found." -ForegroundColor Red
+        }
+    }
 }
 
 function DefineCommands {
     [Command]::Commands.Clear()
     [Command]::new(
-        @("bye", "goodbye"), 
+        ("bye", "goodbye"), 
         {[Message]::Goodbye()}, 
         "Exit the program and receive a goodbye message"
     ) | Out-Null
 
     [Command]::new(
-        @("exit", "quit", "e", "q"), 
+        ("exit", "quit", "e", "q"), 
         {exit}, 
         "Exit the program immediately"
     ) | Out-Null
 
     [Command]::new(
-        @("help", "h"), 
+        ("help", "h"), 
         {[Command]::Help()}, 
         "Display this message again"
     ) | Out-Null
 
     [Command]::new(
-        @("save", "s", "export"), 
+        ("save", "s", "export"), 
         {
             [Message]::ExportJson($args[0])
         }, 
@@ -728,7 +784,7 @@ function DefineCommands {
     ) | Out-Null
 
     [Command]::new(
-        @("load", "l", "import"), 
+        ("load", "l", "import"), 
         {
             [Message]::ImportJson($args[0])
         }, 
@@ -737,13 +793,13 @@ function DefineCommands {
     ) | Out-Null
 
     [Command]::new(
-        @("hist", "history", "ls", "list"), 
+        ("hist", "history", "ls", "list"), 
         {[Message]::History()}, 
         "Display the conversation history"
     ) | Out-Null
 
     [Command]::new(
-        @("back", "b"), 
+        ("back", "b"), 
         {
             [Message]::GoBack($args[0])
         }, 
@@ -752,19 +808,19 @@ function DefineCommands {
     ) | Out-Null
 
     [Command]::new(
-        @("retry", "r"), 
+        ("retry", "r"), 
         {[Message]::Retry()}, 
         "Generate another response to your last message"
     ) | Out-Null
 
     [Command]::new(
-        @("reset", "clear"), 
+        ("reset", "clear"), 
         {[Message]::ResetLoud()}, 
         "Reset the conversation to its initial state"
     ) | Out-Null
 
     [Command]::new(
-        @("model", "m"), 
+        ("model", "m"), 
         {
             [Message]::ChangeModel($args[0])
         }, 
@@ -773,11 +829,27 @@ function DefineCommands {
     ) | Out-Null
 
     [Command]::new(
-        @("imagine", "image", "generate", "img", "i"), 
+        ("imagine", "image", "generate", "img", "i"), 
         {
             [Message]::GenerateImage($args[0])
         }, 
         "Generate an image based on a prompt", 
+        -1, "[prompt]"
+    ) | Out-Null
+    
+    [Command]::new(
+        ("copy", "c", "cp"), 
+        {
+            [Message]::CopyMessage($args[0])
+        },
+        "Copy the last response to the clipboard",
+        1, "[number of messages back]"
+    ) | Out-Null
+
+    [Command]::new(
+        ("paste", "clipboard", "p"), 
+        {[Message]::GiveClipboard($args[0])}, 
+        "Give the bot the content of your clipboard as context", 
         -1, "[prompt]"
     ) | Out-Null
 }
