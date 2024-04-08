@@ -780,6 +780,7 @@ if ($Query) {
     [Message]::AddMessage(
         "You will be asked one short question. You will be as brief as possible with your response, using incomplete sentences if necessary. " + 
         "You will respond with text only, no new lines or markdown elements.  " + 
+        "If asked to write a command you will write *only* the command and assume powershell. " +
         "After you respond it will be the end of the conversation, do not say goodbye.",
         "system"
     ) | Out-Null
