@@ -175,6 +175,8 @@ class Command {
     [int]$ArgsNum; # Number of arguments the command expects
     [string]$Usage; # Usage example for the command without the command itself
 
+    # I don't think argsNum is doing anything anymore, but I'm afraid to remove it...
+
     static [System.Collections.ArrayList]$Commands = @()
 
     Command([string[]]$Keywords, [scriptblock]$Action, [string]$Description, [int]$ArgsNum, [string]$Usage) {
@@ -209,7 +211,7 @@ class Command {
             }
             Write-Host "$($command.Description)" 
             if ($command.Usage) {
-                Write-Host "`t`tUSAGE: /$($keyword) $($command.Usage)" -ForegroundColor Black
+                Write-Host "`t`tUSAGE: /$($keyword) $($command.Usage)" -ForegroundColor DarkGray
             }
         }
     }
@@ -333,6 +335,7 @@ class Message {
 
         $response = [Message]::Submit().content
 
+        # would have used GoBack, but I designed GoBack to be user facing, so it's loud and also doesn't remove system messages
         [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
         [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
 
@@ -580,7 +583,7 @@ class Message {
 
         # Just print all model information if no model is provided
         if (!$Model) {
-            Write-Host "Current model:`n"
+            Write-Host "Active models:`n"
             Write-Host "Text:`t$script:MODEL" -ForegroundColor DarkYellow
             Write-Host "Image:`t$script:ImageModel" -ForegroundColor Blue
 
@@ -633,7 +636,7 @@ class Message {
 
     static GenerateImage([string]$Prompt) {
         if (!$Prompt) {
-            # As much as I would like to spend your API tokens to send you latent noise, you gotta give me something man
+            # As much as I would like to spend your API tokens just to send you latent noise, you gotta give me something
             Write-Host "Please provide a prompt for the image generation." -ForegroundColor Red
             return
         }
