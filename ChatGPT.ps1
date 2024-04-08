@@ -738,14 +738,16 @@ class Message {
             $number = 1
         }
 
-        $message = [Message]::Messages[-$number]
+        $assistantMessages = [Message]::Messages | Where-Object { $_.role -eq "assistant" }
+
+        $message = $assistantMessages[-$number]
 
         if ($message) {
             $message.Copy()
             if ($number -eq 1) {
                 Write-Host "Last response copied to clipboard." -ForegroundColor Green
             } else {
-                $index = [Message]::Messages.IndexOf($message) + 1
+                $index = $assistantMessages.IndexOf($message) + 1
                 Write-Host "Response $index copied to clipboard." -ForegroundColor Green
             }
         } else {
@@ -843,7 +845,7 @@ function DefineCommands {
             [Message]::CopyMessage($args[0])
         },
         "Copy the last response to the clipboard",
-        1, "[number of messages back]"
+        1, "[number of responses back]"
     ) | Out-Null
 
     [Command]::new(

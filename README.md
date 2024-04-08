@@ -85,7 +85,7 @@ The following commands are available within the terminal interface:
 - `/reset` or `/clear`: Reset the conversation to its initial state.
 - `/model` or `/m`: Change the model used for generating responses.
 - `/imagine` or `/generate`: Generate an image based on a given prompt.
-- `/copy [number of messages back]` or `/c [number of messages back]`: Copy the last response to the clipboard (without formatting).
+- `/copy [number of messages back]` or `/c [number of responses back]`: Copy the last response to the clipboard (without formatting).
 - `/paste [prompt]`, `/p [prompt]` or `/clipboard [prompt]`: Give the bot the content of your clipboard as context.
 
 ## Troubleshooting
