@@ -5,11 +5,14 @@
 .DESCRIPTION
     The script allows users to interact with the chatbot by sending messages and receiving responses from the GPT model. It supports multiple commands and provides a conversational interface.
 
+.PARAMETER Query
+    Specifies the user's message/query to be sent to the chatbot.
+
 .PARAMETER Model
     Specifies the GPT model to use for generating responses. The available options are "gpt-4", "gpt-4-turbo-preview", and "gpt-3.5-turbo". The default value is "gpt-3.5-turbo".
 
-.PARAMETER Query
-    Specifies the user's message/query to be sent to the chatbot.
+.PARAMETER ImageModel
+    Specifies the DALL-E model to use for generating images. The available options are "dall-e-2" and "dall-e-3". The default value is "dall-e-2".
 
 .PARAMETER Load
     Specifies a file containing a conversation to load. This can be used to continue a previous conversation.
@@ -415,16 +418,30 @@ class Message {
                     # Ask chatgpt for a name for the conversation
 
                     $filename = [Message]::Whisper("Reply only with a good very short name that summarizes this conversation in a filesystem compatible string, no quotes, no colors, no file extensions")
+
+                    while (Join-Path $script:CONVERSATIONS_DIR "$filename.json" | Test-Path) {
+                        $filename = [Message]::Whisper("That name is already taken. Please provide a different name.")
+                    }
                 }
                 elseif ($filename -eq "/cancel") {
                     Write-Host "Export canceled" -ForegroundColor Red
                     return
+                }
+                elseif (Join-Path $script:CONVERSATIONS_DIR "$filename.json" | Test-Path) {
+                    Write-Host "A file with that name already exists. Overwrite?" -ForegroundColor Red -NoNewline
+                    Write-Host "[$($script:COLORS.GREEN)y$($script:COLORS.BRIGHTWHITE)/$($script:COLORS.RED)n$($script:COLORS.BRIGHTWHITE)]"
+                    Write-Host "> " -NoNewline
+                    if ($global:Host.UI.ReadLine() -ne "y") {
+                        $filename = ""
+                        continue
+                    }
                 }
             }
             if ($filename.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) {
                 # Don't allow invalid characters in the filename
                 Write-Host "Invalid name." -ForegroundColor Red
                 $filename = ""
+                continue
             } else {
                 break
             }
@@ -632,6 +649,10 @@ class Message {
         $url = $response.data[0].url
 
         $filename = [Message]::Whisper("Reply only with a filename for the image, no whitespace, no quotes, no file extensions")
+
+        while (Join-Path $script:IMAGES_DIR "$filename.png" | Test-Path) {
+            $filename = [Message]::Whisper("That name is already taken. Please provide a different name.")
+        }
 
         $outputPath = Join-Path $script:IMAGES_DIR "$filename.png"
 
