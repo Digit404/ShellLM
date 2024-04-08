@@ -98,15 +98,20 @@ if (!$Key) {
 }
 
 # This is just to confirm the key is valid, does not actually use the list of models.
-$response = Invoke-WebRequest `
-    -Uri https://api.openai.com/v1/models `
-    -Headers @{
-        "Authorization" = "Bearer $($Key)"
+try {
+    $response = Invoke-WebRequest `
+        -Uri https://api.openai.com/v1/models `
+        -Headers @{
+            "Authorization" = "Bearer $($Key)"
+        }
+} catch {
+    if (($_ | ConvertFrom-Json).error.code -eq "invalid_api_key") {
+        Write-Host "Invalid API key. Please try again." -ForegroundColor Red
+    } else {
+        Write-Host "Could not connect to OpenAI servers: $_"
     }
 
-if ($response.StatusCode -ne 200) {
-    Write-Host "Invalid API key. Please try again." -ForegroundColor Red
-    exit
+    return
 }
 
 if ($Key -ne $env:OPENAI_API_KEY) {
@@ -306,6 +311,10 @@ class Message {
 
             # Main API call to OpenAI
             $response = [Message]::Call([Message]::CHAT_URL, $body)
+
+            if (!$response) {
+                return $null
+            }
 
             $assistantMessage = [Message]::AddMessage($response.choices[0].message.content, $response.choices[0].message.role)
 
@@ -568,7 +577,7 @@ class Message {
         }
 
         # Don't remove the system message
-        $nonSystemMessages = [Message]::Messages | Where-Object { $_.role -ne "system" }
+        $nonSystemMessages = [Message]::Messages[1..[Message]::Messages.Count]
 
         if ($NumBack * 2 -ge $nonSystemMessages.Count) {
             Write-Host "Reached the beginning of the conversation" -ForegroundColor Yellow
@@ -578,12 +587,12 @@ class Message {
 
         # Go back 2 messages (1 user and one assistant message)
         for ($i = 0; $i -lt $NumBack * 2; $i++) {
-            [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
-
-            # Remove pesky invisible system messages created by image generation
-            if ([Message]::Messages[-1].role -eq "system" -and [Message]::Messages.Length -gt 1){
-                [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+            # Hack to treat the generate image messages as one message
+            if ([Message]::Messages[-1].content -eq "Image created.") {
+                $i -= 2
             }
+
+            [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
         }
 
         Write-Host "Went back $NumBack message(s)" -ForegroundColor Green
@@ -633,7 +642,6 @@ class Message {
 
         # check if it's a letter
         if ([char]::TryParse($Model, [ref]$null)) {
-            Write-Host ($ImageModels[[int][char]::ToUpper($Model) - 65])
             $Model = $ImageModels[[int][char]::ToUpper($Model) - 65]
         }
 
@@ -739,6 +747,11 @@ class Message {
         }
 
         $assistantMessages = [Message]::Messages | Where-Object { $_.role -eq "assistant" }
+
+        if (!$assistantMessages) {
+            Write-Host "No messages to copy." -ForegroundColor Red
+            return
+        }
 
         $message = $assistantMessages[-$number]
 
