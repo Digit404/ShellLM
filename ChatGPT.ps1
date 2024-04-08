@@ -19,21 +19,22 @@
 
 .PARAMETER Key
     Specifies the OpenAI API key to use for making API calls to the OpenAI chat/completions endpoint.
-    If not provided, the script will prompt the user to enter the API key.
+    If not provided, the script will prompt the user to enter the API key. It will also automatically set the API key as an environment variable.
 
 .NOTES
+    Version 2.3
     - This script requires an OpenAI API key to make API calls to the OpenAI chat/completions endpoint.
     - The script uses ANSI escape codes for color formatting in the terminal.
     - The script supports various commands that can be used to interact with the chatbot.
     - The script provides a conversational history and allows exporting the conversation to a JSON file.
 
 .EXAMPLE
-    PS C:\> .\ChatGPT-PS.ps1 -Model "gpt-4" -Query "What is the capital of ecuador?"
+    PS C:\> .\ChatGPT.ps1 -Model "gpt-4" -Query "What is the capital of ecuador?"
 
     This example runs the script using the "gpt-4" model and asks the question "What is the capital of ecuador?".
 
 .EXAMPLE
-    PS C:\> .\ChatGPT-PS.ps1 -Load conversation
+    PS C:\> .\ChatGPT.ps1 -Load conversation
 
     This example loads a conversation from the "conversation.json" file within the conversations dir and continues the conversation.
 #>
