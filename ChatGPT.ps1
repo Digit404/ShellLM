@@ -578,6 +578,7 @@ class Message {
         $Models = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo-preview"
         $ImageModels = "dall-e-2", "dall-e-3"
 
+        # Just print all model information if no model is provided
         if (!$Model) {
             Write-Host "Current model:`n"
             Write-Host "Text:`t$script:MODEL" -ForegroundColor DarkYellow
@@ -593,6 +594,7 @@ class Message {
 
             Write-Host "`nImage Models:" -ForegroundColor Blue
 
+            # Use letter for image models
             foreach ($model in $ImageModels) {
                 $index = $ImageModels.IndexOf($model) + 97
                 Write-Host "  [$([System.Convert]::ToChar($index))]`t$model" -ForegroundColor Blue
@@ -600,13 +602,16 @@ class Message {
 
             Write-Host "`nChange model by typing /model [model]"
 
+            # Don't prompt for model name, just show the available models
             return
         }
 
+        # check if it's a number
         if ([int]::TryParse($Model, [ref]$null)) {
             $Model = $Models[[int]$Model - 1]
         }
 
+        # check if it's a letter
         if ([char]::TryParse($Model, [ref]$null)) {
             Write-Host ($ImageModels[[int][char]::ToUpper($Model) - 65])
             $Model = $ImageModels[[int][char]::ToUpper($Model) - 65]
@@ -620,16 +625,20 @@ class Message {
             Write-Host "Image model changed to $Model" -ForegroundColor Green
         } else {
             Write-Host "Invalid model." -ForegroundColor Red
+
+            # Call the method again to show the available models
             [Message]::ChangeModel("")
         }
     }
 
     static GenerateImage([string]$Prompt) {
         if (!$Prompt) {
+            # As much as I would like to spend your API tokens to send you latent noise, you gotta give me something man
             Write-Host "Please provide a prompt for the image generation." -ForegroundColor Red
             return
         }
 
+        # Image generation meta prompt
         $Message = "Create a detailed image generation prompt for DALL-E based on the following request, include nothing other than the description in plain text: $Prompt"
         [Message]::AddMessage($Message, "system")
 
@@ -641,27 +650,35 @@ class Message {
             model = $script:ImageModel; 
             prompt = $prompt;
             n = 1;
-            size = "1024x1024"
+            size = "1024x1024" # Default size
         }
 
         $response = [Message]::Call([Message]::IMAGE_URL, $body)
 
+        # The api responds with a url of the image and not the image data itself
         $url = $response.data[0].url
 
+        # Outsource the hard part to the bot we're already connected to
         $filename = [Message]::Whisper("Reply only with a filename for the image, no whitespace, no quotes, no file extensions")
 
+        # The bot can be unoriginal sometimes
         while (Join-Path $script:IMAGES_DIR "$filename.png" | Test-Path) {
             $filename = [Message]::Whisper("That name is already taken. Please provide a different name.")
         }
 
         $outputPath = Join-Path $script:IMAGES_DIR "$filename.png"
 
+        # Download the image
         Invoke-WebRequest -Uri $url -OutFile $outputPath
 
         Write-Host "              `r" -NoNewline
 
         Write-Host "Image created at ""$outputPath""" -ForegroundColor Green
 
+        # Open the file after creation
+        Start-Process $outputPath
+
+        # Hopefully the bot will say something interesting in response to this, and not something random
         [Message]::AddMessage("Image created.", "system")
         Write-Host ([Message]::Submit().FormatMessage())
     }
