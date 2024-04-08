@@ -147,22 +147,32 @@ function WrapText {
     # First indent should be the same as the indent when not specified
     $wrappedText = $FirstIndent ? $FirstIndent : (" " * $Indent)
 
-    $words = $Text -split '\s+|\r?\n'
+    $lines = $Text -split '\r?\n'
 
-    $lineLength = 0
+    $lineCount = 0
+    $totalLines = $lines.Length
 
-    while ($words) {
-        $word = $words[0]
+    foreach ($line in $lines) {
+        $lineWords = $line -split '\s+'
 
-        if ($lineLength + $word.Length + 1 -gt $Width) {
-            $wrappedText += "`n" + (" " * $Indent)
-            $lineLength = 0
+        $lineLength = 0
+
+        foreach ($word in $lineWords) {
+            if ($lineLength + $word.Length + 1 -gt $Width) {
+                $wrappedText += "`n" + (" " * $Indent)
+                $lineLength = 0
+            }
+
+            $wrappedText += "$word "
+            $lineLength += $word.Length + 1
         }
 
-        $wrappedText += "$word "
-        $lineLength += $word.Length + 1
+        # Append newline only if it's not the last line
+        if ($lineCount -lt $totalLines - 1) {
+            $wrappedText += "`n" + (" " * $Indent)  # Preserve newline characters
+        }
 
-        $words = $words[1..$words.Length]
+        $lineCount++
     }
 
     return $wrappedText
@@ -548,6 +558,7 @@ class Message {
 
         foreach ($message in $nonSystemMessages) {
             Write-Host ($message.FormatHistory())
+            Write-Host ""
         }
     }
 
