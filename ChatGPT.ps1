@@ -211,7 +211,7 @@ class Command {
         [Command]::Commands.Add($this)
     }
 
-    # Overloaded constructor for mandatory parameters only
+    # Overload constructor for mandatory parameters only
     Command([string[]]$Keywords, [scriptblock]$Action, [string]$Description) {
         $this.Keywords = $Keywords
         $this.Action = $Action
@@ -241,9 +241,26 @@ class Command {
     static Execute($prompt) { # Execute the command. If you see errors pointing to this the problem is likely elsewhere
         # Split up prompt into command name and the rest as arguments
         $commandName, $argumentsString = $prompt -split '\s+', 2
+        $commandName = $commandName.TrimStart('/')
 
-        # Find the matching command
-        $command = [Command]::Commands | Where-Object { $_.Keywords -contains $commandName.TrimStart('/') }
+        # Find the command that most matches the command name
+        $command = [Command]::Commands | Where-Object { $_.Keywords -contains $commandName }
+
+        if (!$command) {
+            # If no exact match, find possible matches (e.g., /h for /help
+            $possibleCommands = [Command]::Commands | Where-Object { $_.Keywords -like "$commandName*" }
+
+            if ($possibleCommands.Count -gt 1) {
+                Write-Host "Command `"$CommandName`".is ambiguous." -ForegroundColor Red
+                Write-Host "Possible matches:" -ForegroundColor Red
+                foreach ($command in $possibleCommands) {
+                    Write-Host "`t/$($command.Keywords[0])" -ForegroundColor DarkYellow
+                }
+                return
+            } else {
+                $command = $possibleCommands
+            }
+        }
 
         if ($command) {
             if (!$argumentsString) {
