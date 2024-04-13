@@ -424,6 +424,10 @@ class Message {
     }
 
     static Retry() {
+        if ([Message]::Messages.Count -lt 2) {
+            Write-Host "There are no messages in history." -ForegroundColor Red
+            return
+        }
         [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
         Write-Host ([Message]::Submit().FormatMessage())
     }
@@ -715,6 +719,8 @@ class Message {
     static GiveClipboard([string]$Prompt) {
         # Function to give the bot the content of your clipboard as context, supplimenting the need for multiline messages
         $ClipboardContent = Get-Clipboard
+
+        # For some reason clipboard content is an array of strings
         $ClipboardContent = $ClipboardContent -join "`n"
 
         # Add the messages in this order because it makes more sense to me
@@ -916,6 +922,12 @@ while ($true) {
     if ($prompt[0] -eq "/") {
         [Command]::Execute($prompt)
     } else {
+
+        # Make sure you don't send nothing
+        if (!$prompt) {
+            continue
+        }
+
         Write-Host ([Message]::Query($prompt).FormatMessage())
     }
 }
