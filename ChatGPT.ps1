@@ -821,6 +821,37 @@ class Message {
             Write-Host "Message not found." -ForegroundColor Red
         }
     }
+
+    static ChangeInstructions ([string]$Instructions) {
+        $currentInstructions = if ([Message]::Messages[1].role -eq "system") {
+            [Message]::Messages[1].content
+        } else {
+            ""
+        }
+
+        if (!$Instructions) {
+            if (!$currentInstructions) {
+                Write-Host "No instructions set" -ForegroundColor Red
+                return
+            }
+
+            Write-Host "Custom instructions:`n" -ForegroundColor DarkYellow
+            Write-Host (WrapText -Text $currentInstructions -Indent 5)
+            Write-Host "`nChange instructions by typing /instructions [instructions]" -ForegroundColor DarkYellow
+            return
+
+        } else {
+            $newObject = [Message]::new($Instructions, "system")
+
+            if ([Message]::Messages[1].role -eq "system") {
+                [Message]::Messages[1] = $newObject
+            } else {
+                [Message]::Messages.Insert(1, $newObject)
+            }
+            
+            Write-Host "Instructions changed" -ForegroundColor Green
+        }
+    }
 }
 
 function DefineCommands {
@@ -923,6 +954,15 @@ function DefineCommands {
         {[Message]::GiveClipboard($args[0])}, 
         "Give the model the content of your clipboard as context", 
         -1, "[prompt]"
+    ) | Out-Null
+
+    [Command]::new(
+        ("rules", "inst", "instructions"), 
+        {
+            [Message]::ChangeInstructions($args[0])
+        }, 
+        "Set custom instructions the model has to follow for the conversation", 
+        -1, "[instructions]"
     ) | Out-Null
 }
 

@@ -87,6 +87,7 @@ The following commands are available within the terminal interface:
 - `/imagine {prompt}` (`/generate`, `/image`, `/img`): Generate an image based on a given prompt.
 - `/copy [number of messages back]` (`/cp`): Copy the last response to the clipboard (without formatting).
 - `/paste [prompt]` (`/clipboard`): Give the model the content of your clipboard as context.
+- `/rules [instructions]` (`/instructions`): Set custom instructions the model has to follow for the conversation.
 
 Use `/help` for more information and usage.
 
