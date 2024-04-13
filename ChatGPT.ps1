@@ -923,8 +923,13 @@ while ($true) {
         [Command]::Execute($prompt)
     } else {
 
-        # Make sure you don't send nothing
+        # Make sure you don't send nothing (the api doesn't like that)
         if (!$prompt) {
+            # Move cusor back up like a disobedient child
+            $pos = $Host.UI.RawUI.CursorPosition
+            $pos.Y -= 1
+            $Host.UI.RawUI.CursorPosition = $pos
+
             continue
         }
 
