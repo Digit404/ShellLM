@@ -44,7 +44,7 @@ param (
     [Parameter(Mandatory=$false)]
     [ValidateSet(
         "gpt-4",
-        "gpt-4-turbo-preview",
+        "gpt-4-turbo",
         "gpt-3.5-turbo"
     )]
     [string] $Model = "gpt-3.5-turbo",
@@ -159,18 +159,24 @@ function WrapText {
     $totalLines = $lines.Length
 
     foreach ($line in $lines) {
-        $lineWords = $line -split '\s+'
+        # capture spaces in the split
+        $lineWords = $line -split '(\s+)'
 
         $lineLength = 0
 
         foreach ($word in $lineWords) {
-            if ($lineLength + $word.Length + 1 -gt $Width) {
+            if ($lineLength + $word.Length -ge $Width) {
+                # hackish to make sure we don't wrap spaces
+                if ($word -eq " ") {
+                    continue
+                }
+                
                 $wrappedText += "`n" + (" " * $Indent)
                 $lineLength = 0
-            }
+            } 
 
-            $wrappedText += "$word "
-            $lineLength += $word.Length + 1
+            $wrappedText += $word
+            $lineLength += $word.Length
         }
 
         # Append newline only if it's not the last line
@@ -609,7 +615,7 @@ class Message {
     }
 
     static ChangeModel ([string]$Model) {
-        $Models = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo-preview"
+        $Models = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"
         $ImageModels = "dall-e-2", "dall-e-3"
 
         # Just print all model information if no model is provided
