@@ -715,6 +715,7 @@ class Message {
     static GiveClipboard([string]$Prompt) {
         # Function to give the bot the content of your clipboard as context, supplimenting the need for multiline messages
         $ClipboardContent = Get-Clipboard
+        $ClipboardContent = $ClipboardContent -join "`n"
 
         # Add the messages in this order because it makes more sense to me
         [Message]::AddMessage($prompt, "user")
@@ -722,9 +723,7 @@ class Message {
 
         Write-Host "Clipboard content added for context:`n" -ForegroundColor Green
 
-        foreach ($line in $ClipboardContent -split '\r?\n') {
-            Write-Host (WrapText -Text $line -Indent 5)
-        }
+        Write-Host (WrapText -Text $ClipboardContent -Indent 5)
 
         Write-Host ""
 
