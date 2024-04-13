@@ -439,9 +439,10 @@ class Message {
     }
 
     static ExportJson($filename) {
+        $filepath = ""
         while ($true) {
             if (!$filename) {
-                Write-Host (WrapText "What would you like to name the file? (Press enter to generate a name)")
+                Write-Host (WrapText "What would you like to name the file? (Press enter to generate a name, enter /cancel to cancel)")
                 Write-Host "> " -NoNewline
                 $filename = $global:Host.UI.ReadLine()
                 if (!$filename) {
@@ -460,30 +461,31 @@ class Message {
                     Write-Host "Export canceled" -ForegroundColor Red
                     return
                 }
-                elseif (Join-Path $script:CONVERSATIONS_DIR "$filename.json" | Test-Path) {
-                    Write-Host "A file with that name already exists. Overwrite?" -ForegroundColor Red -NoNewline
-                    Write-Host "[$($script:COLORS.GREEN)y$($script:COLORS.BRIGHTWHITE)/$($script:COLORS.RED)n$($script:COLORS.BRIGHTWHITE)]"
-                    Write-Host "> " -NoNewline
-                    if ($global:Host.UI.ReadLine() -ne "y") {
-                        $filename = ""
-                        continue
-                    }
-                }
             }
             if ($filename.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) {
                 # Don't allow invalid characters in the filename
                 Write-Host "Invalid name." -ForegroundColor Red
                 $filename = ""
                 continue
-            } else {
-                break
             }
+
+            # Ensure it ends in .json
+            $filename += $filename -notlike "*.json" ? ".json" : ""
+
+            $filepath = Join-Path $script:CONVERSATIONS_DIR $filename
+
+            if (Test-Path $filepath) {
+                Write-Host "A file with that name already exists. Overwrite? " -ForegroundColor Red -NoNewline
+                Write-Host "[$($script:COLORS.GREEN)y$($script:COLORS.BRIGHTWHITE)/$($script:COLORS.RED)n$($script:COLORS.BRIGHTWHITE)]"
+                Write-Host "> " -NoNewline
+                if ($global:Host.UI.ReadLine() -ne "y") {
+                    $filename = ""
+                    continue
+                }
+            }
+
+            break
         }
-
-        # Ensure it ends in .json
-        $filename += $filename -notlike "*.json" ? ".json" : ""
-
-        $filepath = Join-Path $script:CONVERSATIONS_DIR $filename
 
         $json = [Message]::Messages | ConvertTo-Json -Depth 5
 
