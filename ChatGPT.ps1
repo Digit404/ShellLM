@@ -47,14 +47,14 @@ param (
         "gpt-4-turbo",
         "gpt-3.5-turbo"
     )]
-    [string] $Model = "gpt-3.5-turbo",
+    [string] $Model = "gpt-3.5-turbo", # gpt-4 is too expensive to be default
 
     [Parameter(Mandatory=$false)]
     [ValidateSet(
         "dall-e-2",
         "dall-e-3"
     )]
-    [string] $ImageModel = "dall-e-2",
+    [string] $ImageModel = "dall-e-3", # Nobody wants to use dall-e-2
 
     [Parameter(ValueFromRemainingArguments)]
     [string] $Query,
