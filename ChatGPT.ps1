@@ -238,7 +238,7 @@ class Command {
         }
     }
 
-    static Execute($prompt) { # Execute the command. If you see errors pointing to this the problem is likely elsewhere
+    static Execute([string]$prompt) { # Execute the command. If you see errors pointing to this the problem is likely elsewhere
         # Split up prompt into command name and the rest as arguments
         $commandName, $argumentsString = $prompt -split '\s+', 2
         $commandName = $commandName.TrimStart('/')
@@ -251,10 +251,14 @@ class Command {
             $possibleCommands = [Command]::Commands | Where-Object { $_.Keywords -like "$commandName*" }
 
             if ($possibleCommands.Count -gt 1) {
-                Write-Host "Command `"$CommandName`".is ambiguous." -ForegroundColor Red
+                Write-Host "Command `"$CommandName`" is ambiguous. " -ForegroundColor Red -NoNewline
                 Write-Host "Possible matches:" -ForegroundColor Red
                 foreach ($command in $possibleCommands) {
-                    Write-Host "`t/$($command.Keywords[0])" -ForegroundColor DarkYellow
+                    $commandHint = @($command.Keywords | Where-Object { $_ -like "$commandName*" })[0]
+                    if ($commandHint -ne $command.Keywords[0]) {
+                        $commandHint += " (" + $command.Keywords[0] + ")"
+                    }
+                    Write-Host "   /$commandHint" -ForegroundColor DarkYellow
                 }
                 return
             } else {
@@ -371,7 +375,7 @@ class Message {
         }
     }
 
-    static [string] Whisper($Prompt) {
+    static [string] Whisper([string]$Prompt) {
         # submit without adding anything to the conversation or [Message]::Messages
 
         [Message]::AddMessage($Prompt, "system")
@@ -455,7 +459,7 @@ class Message {
         Write-Host ([Message]::Submit().FormatMessage())
     }
 
-    static ExportJson($filename) {
+    static ExportJson([string]$filename) {
         $filepath = ""
         while ($true) {
             if (!$filename) {
@@ -474,7 +478,7 @@ class Message {
                         $filename = [Message]::Whisper("That name is already taken. Please provide a different name.")
                     }
                 }
-                elseif ($filename -eq "/cancel") {
+                elseif ("/cancel" -like "$filename*") {
                     Write-Host "Export canceled" -ForegroundColor Red
                     return
                 }
@@ -511,7 +515,7 @@ class Message {
         Write-Host "Conversation saved to $($filepath)" -ForegroundColor Green
     }
 
-    static ImportJson($filename) {
+    static ImportJson([string]$filename) {
         if (!$filename) {
             Write-Host "This will clear the current conversation. Type ""/cancel"" to cancel." -ForegroundColor Red
             Write-Host "Saved conversations:"
@@ -532,7 +536,7 @@ class Message {
             # Better than Read-Host because it doesn't output a ':'
             $filename = $global:Host.UI.ReadLine()
 
-            if ($filename -eq "/cancel") {
+            if ("/cancel" -like "$filename*") {
                 Write-Host "Import canceled" -ForegroundColor Red
                 return
             }
@@ -601,7 +605,17 @@ class Message {
         }
     }
 
-    static GoBack ([int]$NumBack) {
+    static GoBack ($NumBack) { # leaving the parameter untyped because although it is a string, we will always use it as an int.
+        # make sure it's an actual value
+        if (![int]::TryParse($NumBack, [ref]$null)) {
+            Write-Host "Invalid number" -ForegroundColor Red
+            return
+        } else {
+            # cast to int
+            [int]$NumBack = [int]$NumBack
+        }
+
+        # when provided with null, funciton casts it to string, making it empty, then casts it to int, making it 0
         if ($NumBack -lt 1) {
             $NumBack = 1
         }
@@ -772,7 +786,16 @@ class Message {
         Set-Clipboard -Value $MessageContent
     }
 
-    static CopyMessage ([int]$number) {
+    static CopyMessage ($number) {
+        # make sure it's an actual value
+        if (![int]::TryParse($number, [ref]$null)) {
+            Write-Host "Invalid number" -ForegroundColor Red
+            return
+        } else {
+            # cast to int
+            [int]$number = [int]$number
+        }
+        
         if ($number -lt 1) {
             $number = 1
         }
@@ -801,6 +824,7 @@ class Message {
 }
 
 function DefineCommands {
+    # The first command is the one shown to the user
     [Command]::Commands.Clear()
     [Command]::new(
         ("bye", "goodbye"), 
@@ -810,6 +834,8 @@ function DefineCommands {
 
     [Command]::new(
         ("exit", "quit", "e", "q"), 
+        # although the program will autocomplete q to quit, it is useful to put this here 
+        # so quit will always have priority over any other "q" command
         {exit}, 
         "Exit the program immediately"
     ) | Out-Null
