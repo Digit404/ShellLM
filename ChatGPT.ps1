@@ -9,7 +9,7 @@
     Specifies the user's message/query to be sent to the chatbot.
 
 .PARAMETER Model
-    Specifies the GPT model to use for generating responses. The available options are "gpt-4", "gpt-4-turbo-preview", and "gpt-3.5-turbo". The default value is "gpt-3.5-turbo".
+    Specifies the GPT model to use for generating responses. The available options are "gpt-4-turbo", and "gpt-3.5-turbo". The default value is "gpt-3.5-turbo".
 
 .PARAMETER ImageModel
     Specifies the DALL-E model to use for generating images. The available options are "dall-e-2" and "dall-e-3". The default value is "dall-e-2".
@@ -43,9 +43,11 @@
 param (
     [Parameter(Mandatory=$false)]
     [ValidateSet(
+        "gpt-3",
+        "gpt-3.5",
+        "gpt-3.5-turbo",
         "gpt-4",
-        "gpt-4-turbo",
-        "gpt-3.5-turbo"
+        "gpt-4-turbo"
     )]
     [string] $Model = "gpt-3.5-turbo", # gpt-4 is too expensive to be default
 
@@ -96,6 +98,15 @@ if (!$env:OPENAI_API_KEY -and !$Key) {
 
 if (!$Key) {
     $Key = $env:OPENAI_API_KEY
+}
+
+# the turbo models are better than the base models and are less expensive
+if ($model -eq "gpt-3" -or $model -eq "gpt-3.5") {
+    $model = "gpt-3.5-turbo"
+}
+
+if ($model -eq "gpt-4") {
+    $model = "gpt-4-turbo"
 }
 
 # This is just to confirm the key is valid, does not actually use the list of models.
@@ -242,6 +253,10 @@ class Command {
         # Split up prompt into command name and the rest as arguments
         $commandName, $argumentsString = $prompt -split '\s+', 2
         $commandName = $commandName.TrimStart('/')
+
+        if (!$commandName) {
+            $commandName = "help"
+        }
 
         # Find the command that most matches the command name
         $command = [Command]::Commands | Where-Object { $_.Keywords -contains $commandName }
@@ -648,6 +663,7 @@ class Message {
     }
 
     static ChangeModel ([string]$Model) {
+        # I'm going to give people the chance to switch to GPT-4, even though it's inferior in every possible way to turbo models
         $Models = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"
         $ImageModels = "dall-e-2", "dall-e-3"
 
@@ -662,7 +678,9 @@ class Message {
 
             foreach ($model in $Models) {
                 $index = $Models.IndexOf($model) + 1
-                Write-Host "  [$index]`t$model" -ForegroundColor DarkYellow
+                # change color if selected
+                $color = if ($model -eq $script:MODEL) { "Green" } else { "DarkYellow" }
+                Write-Host "  [$index]`t$model" -ForegroundColor $color
             }
 
             Write-Host "`nImage Models:" -ForegroundColor Blue
@@ -670,10 +688,16 @@ class Message {
             # Use letter for image models
             foreach ($model in $ImageModels) {
                 $index = $ImageModels.IndexOf($model) + 97
-                Write-Host "  [$([System.Convert]::ToChar($index))]`t$model" -ForegroundColor Blue
+                $color = if ($model -eq $script:ImageModel) { "Green" } else { "Blue" }
+                Write-Host "  [$([System.Convert]::ToChar($index))]`t$model" -ForegroundColor $color
             }
 
             Write-Host "`nChange model by typing /model [model]"
+
+            # warning message
+            Write-Host (
+                WrapText "Please note that pricing varies drastically between the models, and that GPT-4 is not recommended for use as it is more expensive and less powerful than the turbo model."
+            ) -ForegroundColor Red
 
             # Don't prompt for model name, just show the available models
             return
@@ -831,7 +855,7 @@ class Message {
 
         if (!$Instructions) {
             if (!$currentInstructions) {
-                Write-Host "No instructions set" -ForegroundColor Red
+                Write-Host "No instructions set. Set them with /rules [instructions]" -ForegroundColor Red
                 return
             }
 
