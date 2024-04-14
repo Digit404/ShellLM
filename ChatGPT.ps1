@@ -130,6 +130,14 @@ if ($Key -ne $env:OPENAI_API_KEY) {
     [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")
 }
 
+$SYSTEM_MESSAGE = (
+    'You are communicating through the terminal. Do not use markdown syntax. ' +
+    'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want, and {RESET} to go back. ' +
+    'If you write code, do not use "```". Use colors for syntax highlighting instead. ' +
+    'Colors available are RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, RESET. ' +
+    'You can also use BRIGHT colors using {BRIGHTCOLOR}. (E.g. {BRIGHTRED}Hello{RESET})'
+)
+
 # Colors for the terminal
 $COLORS = @{
     RED = "$ESC[31m"
@@ -450,11 +458,7 @@ class Message {
 
         # Default message to start the conversation and inform the bot on how to use the colors
         [Message]::AddMessage(
-            'You are communicating through the terminal. ' +
-            'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want, and {RESET} to go back. ' +
-            'Do not use markdown. If you write code, do not use "```". Use colors for syntax highlighting instead. ' +
-            'Colors available are RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, RESET. ' +
-            'You can also use BRIGHT colors using {BRIGHTCOLOR}. (E.g. {BRIGHTRED}Hello{RESET})',
+            $script:SYSTEM_MESSAGE,
             "system"
         )
     }
