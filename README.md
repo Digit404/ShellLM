@@ -7,7 +7,7 @@ This project is a terminal-based interface for interacting with OpenAI's ChatGPT
 - Simple and intuitive command-based interface
 - Colorful and formatted messages for easy readability
 - Conversation history and navigation
-- Saving and loading conversations from JSON files
+- Saving and loading conversations to and from JSON files
 - Retry option to generate alternative responses
 - AskGPT mode for brief answers to questions
 - Supports GPT-3.5-turbo, GPT-4, and GPT-4-turbo

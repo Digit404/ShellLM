@@ -159,6 +159,7 @@ $COLORS = @{
 }
 
 function WrapText {
+    # Home grown stand in for python's textwrap (ansiwrap)
     param (
         [Parameter(Mandatory, Position=0)]
         [string]$Text,
@@ -625,6 +626,10 @@ class Message {
     }
 
     static GoBack ($NumBack) { # leaving the parameter untyped because although it is a string, we will always use it as an int.
+        if (!$NumBack -or $NumBack -lt 1) {
+            $NumBack = 1
+        }
+
         # make sure it's an actual value
         if (![int]::TryParse($NumBack, [ref]$null)) {
             Write-Host "Invalid number" -ForegroundColor Red
@@ -632,11 +637,6 @@ class Message {
         } else {
             # cast to int
             [int]$NumBack = [int]$NumBack
-        }
-
-        # when provided with null, funciton casts it to string, making it empty, then casts it to int, making it 0
-        if ($NumBack -lt 1) {
-            $NumBack = 1
         }
 
         # Don't remove the system message
@@ -653,6 +653,10 @@ class Message {
             # Hack to treat the generate image messages as one message
             if ([Message]::Messages[-1].content -eq "Image created.") {
                 $i -= 2
+            } 
+            # Hack to treat the clipboard messages as one message
+            elseif ([Message]::Messages[-1].content -like "Contents of user clipboard:*") {
+                $i--
             }
 
             [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
@@ -815,6 +819,10 @@ class Message {
     }
 
     static CopyMessage ($number) {
+        if (!$number -or $number -lt 1) {
+            $number = 1
+        }
+
         # make sure it's an actual value
         if (![int]::TryParse($number, [ref]$null)) {
             Write-Host "Invalid number" -ForegroundColor Red
@@ -822,10 +830,6 @@ class Message {
         } else {
             # cast to int
             [int]$number = [int]$number
-        }
-        
-        if ($number -lt 1) {
-            $number = 1
         }
 
         $assistantMessages = [Message]::Messages | Where-Object { $_.role -eq "assistant" }
