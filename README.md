@@ -12,6 +12,8 @@ This project is a terminal-based interface for interacting with OpenAI's ChatGPT
 - AskGPT mode for brief answers to questions
 - Supports GPT-3.5-turbo, GPT-4, and GPT-4-turbo
 - Image generation: Generate images using the DALL-E API. The generated images are saved in the `.\images` folder.
+- Custom instructions
+- Automatically loads conversation 'autoload.json' on startup, automatically saves last conversation
 
 ## Installation
 

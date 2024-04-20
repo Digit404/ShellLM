@@ -457,11 +457,15 @@ class Message {
     static Reset() {
         [Message]::Messages.Clear()
 
-        # Default message to start the conversation and inform the bot on how to use the colors
-        [Message]::AddMessage(
-            $script:SYSTEM_MESSAGE,
-            "system"
-        )
+        if (Test-Path (Join-Path $script:CONVERSATIONS_DIR "Autoload.json")) {
+            [Message]::LoadFile("Autoload")
+        } else {
+            # Default message to start the conversation and inform the bot on how to use the colors
+            [Message]::AddMessage(
+                $script:SYSTEM_MESSAGE,
+                "system"
+            )
+        }
     }
 
     static ResetLoud() { # Reset the conversation and inform the user
@@ -503,6 +507,7 @@ class Message {
                     return
                 }
             }
+
             if ($filename.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) {
                 # Don't allow invalid characters in the filename
                 Write-Host "Invalid name." -ForegroundColor Red
@@ -525,14 +530,30 @@ class Message {
                 }
             }
 
+            if ($filename -eq "autoload.json") {
+                Write-Host "The conversation named 'autoload.json' is automatically loaded on startup. Is this okay? " -ForegroundColor Yellow -NoNewline
+                Write-Host "[$($script:COLORS.GREEN)y$($script:COLORS.BRIGHTWHITE)/$($script:COLORS.RED)n$($script:COLORS.BRIGHTWHITE)]"
+                Write-Host "> " -NoNewline
+                if ($global:Host.UI.ReadLine() -ne "y") {
+                    $filename = ""
+                    continue
+                }
+            }
+
             break
         }
 
+        [Message]::SaveFile($filepath)
+    }
+
+    static SaveFile ([string]$filepath) {
         $json = [Message]::Messages | ConvertTo-Json -Depth 5
 
         $json | Set-Content -Path $filepath
 
-        Write-Host "Conversation saved to $($filepath)" -ForegroundColor Green
+        if ((Split-Path $filepath -Leaf) -ne "autosave.json") { # Silent autosave
+            Write-Host "Conversation saved to $($filepath)" -ForegroundColor Green
+        }
     }
 
     static ImportJson([string]$filename) {
@@ -571,6 +592,7 @@ class Message {
                     return
                 }
             }
+
         } else {
             # If the user provided a comversation name
             Write-Host "This will clear the current conversation. Continue?"`
@@ -607,7 +629,9 @@ class Message {
             [Message]::AddMessage($message.content, $message.role)
         }
 
-        Write-Host "Conversation ""$File"" loaded" -ForegroundColor Green
+        if ($file -ne "autoload") { # Silent autoload
+            Write-Host "Conversation ""$File"" loaded" -ForegroundColor Green
+        }
     }
 
     static History () {
@@ -666,7 +690,8 @@ class Message {
     }
 
     static Goodbye() {
-        Write-Host ([Message]::Query("Goodbye!").FormatMessage())
+        # Don't remember we said goodbye
+        Write-Host ([Message]::Whisper("Goodbye!")) -ForegroundColor Yellow
         exit
     }
 
@@ -899,7 +924,7 @@ function DefineCommands {
         ("exit", "quit", "e", "q"), 
         # although the program will autocomplete q to quit, it is useful to put this here 
         # so quit will always have priority over any other "q" command
-        {exit}, 
+        {break}, 
         "Exit the program immediately"
     ) | Out-Null
 
@@ -1007,7 +1032,7 @@ if ($Query) {
     [Message]::AddMessage(
         "You will be asked one short question. You will be as brief as possible with your response, using incomplete sentences if necessary. " + 
         "You will respond with text only, no new lines or markdown elements.  " + 
-        "If asked to write a command you will write *only* the command and assume powershell. " +
+        "If asked to write a command or script you will write *only* that and assume powershell. In this case forget about being brief. " +
         "After you respond it will be the end of the conversation, do not say goodbye.",
         "system"
     ) | Out-Null
@@ -1037,25 +1062,35 @@ if ($Load) {
     [Message]::LoadFile($Load)
 }
 
-while ($true) {
-    Write-Host "Chat > " -NoNewline -ForegroundColor Blue
-    $prompt = $Host.UI.ReadLine()
+if (Test-Path (Join-Path $CONVERSATIONS_DIR "Autoload.json")) {
+    [Message]::LoadFile("Autoload")
+}
 
-    # Do command handling
-    if ($prompt[0] -eq "/") {
-        [Command]::Execute($prompt)
-    } else {
+try {
+    while ($true) {
+        Write-Host "Chat > " -NoNewline -ForegroundColor Blue
+        $prompt = $Host.UI.ReadLine()
 
-        # Make sure you don't send nothing (the api doesn't like that)
-        if (!$prompt) {
-            # Move cusor back up like a disobedient child
-            $pos = $Host.UI.RawUI.CursorPosition
-            $pos.Y -= 1
-            $Host.UI.RawUI.CursorPosition = $pos
+        # Do command handling
+        if ($prompt[0] -eq "/") {
+            [Command]::Execute($prompt)
+        } else {
 
-            continue
+            # Make sure you don't send nothing (the api doesn't like that)
+            if (!$prompt) {
+                # Move cusor back up like a disobedient child
+                $pos = $Host.UI.RawUI.CursorPosition
+                $pos.Y -= 1
+                $Host.UI.RawUI.CursorPosition = $pos
+
+                continue
+            }
+
+            Write-Host ([Message]::Query($prompt).FormatMessage())
         }
-
-        Write-Host ([Message]::Query($prompt).FormatMessage())
     }
+} finally {
+    # For some reason, ctrl+c triggers finally, but doesn't run the function
+    # Save the conversation to autosave
+    [Message]::SaveFile((Join-Path $CONVERSATIONS_DIR "autosave.json"))
 }
