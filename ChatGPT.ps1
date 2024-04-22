@@ -66,13 +66,25 @@ param (
     [string] $Load,
 
     [Parameter(Mandatory=$false)]
-    [string] $Key
+    [string] $Key,
+
+    [Parameter(Mandatory=$false)]
+    [switch] $Clear
 )
 
 $ESC = [char]27 # Escape char for colors
 
 # Consider making this a parameter
 $CONVERSATIONS_DIR = Join-Path $PSScriptRoot .\conversations\
+
+# Added this part because the bot will always remember the last interaction and sometimes this is undesirable if you want a different output
+if ($Clear) {
+    $global:LastQuery = ""
+    $global:LastResponse = ""
+    if (!$Query) {
+        exit
+    }
+}
 
 if (!(Test-Path $CONVERSATIONS_DIR)) {
     New-Item -ItemType Directory -Path $CONVERSATIONS_DIR | Out-Null
@@ -1031,8 +1043,8 @@ DefineCommands
 if ($Query) {
     [Message]::AddMessage(
         "You will be asked one short question. You will be as brief as possible with your response, using incomplete sentences if necessary. " + 
-        "You will respond with text only, no new lines or markdown elements.  " + 
-        "If asked to write a command or script you will write *only* that and assume powershell. In this case forget about being brief. " +
+        "You will respond with text only, no new lines or markdown elements. " + 
+        "If explicitly asked to write a command or script you will write *only* that and assume powershell. In this case forget about being brief. " +
         "After you respond it will be the end of the conversation, do not say goodbye.",
         "system"
     ) | Out-Null
