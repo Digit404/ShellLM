@@ -69,7 +69,13 @@ param (
     [string] $Key,
 
     [Parameter(Mandatory=$false)]
-    [switch] $Clear
+    [switch] $Clear,
+
+    [Parameter(Mandatory=$false)]
+    [System.ConsoleColor] $AssistantColor = "Yellow",
+
+    [Parameter(Mandatory=$false)]
+    [System.ConsoleColor] $UserColor = "Blue"
 )
 
 $ESC = [char]27 # Escape char for colors
@@ -81,6 +87,7 @@ $CONVERSATIONS_DIR = Join-Path $PSScriptRoot .\conversations\
 if ($Clear) {
     $global:LastQuery = ""
     $global:LastResponse = ""
+    Write-Host "AskGPT context cleared" -ForegroundColor Yellow
     if (!$Query) {
         exit
     }
@@ -146,29 +153,33 @@ $SYSTEM_MESSAGE = (
     'You are communicating through the terminal. Do not use markdown syntax. ' +
     'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want, and {RESET} to go back. ' +
     'If you write code, do not use "```". Use colors for syntax highlighting instead. ' +
-    'Colors available are RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, RESET. ' +
-    'You can also use BRIGHT colors using {BRIGHTCOLOR}. (E.g. {BRIGHTRED}Hello{RESET})'
+    'Colors available are RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, GRAY, RESET. ' +
+    'You can also use DARK colors using {DARKCOLOR}. (E.g. {DARKRED}Hello{RESET})'
 )
 
 # Colors for the terminal
 $COLORS = @{
-    RED = "$ESC[31m"
-    GREEN = "$ESC[32m"
-    YELLOW = "$ESC[33m"
-    BLUE = "$ESC[34m"
-    MAGENTA = "$ESC[35m"
-    CYAN = "$ESC[36m"
-    WHITE = "$ESC[37m"
-    BRIGHTBLACK = "$ESC[90m"
-    BRIGHTRED = "$ESC[91m"
-    BRIGHTGREEN = "$ESC[92m"
-    BRIGHTYELLOW = "$ESC[93m"
-    BRIGHTBLUE = "$ESC[94m"
-    BRIGHTMAGENTA = "$ESC[95m"
-    BRIGHTCYAN = "$ESC[96m"
-    BRIGHTWHITE = "$ESC[97m"
-    RESET = "$ESC[33m"
+    DARKRED = "$ESC[31m"
+    DARKGREEN = "$ESC[32m"
+    DARKYELLOW = "$ESC[33m"
+    DARKBLUE = "$ESC[34m"
+    DARKMAGENTA = "$ESC[35m"
+    DARKCYAN = "$ESC[36m"
+    GRAY = "$ESC[37m"
+    DARKGRAY = "$ESC[90m"
+    RED = "$ESC[91m"
+    GREEN = "$ESC[92m"
+    YELLOW = "$ESC[93m"
+    BLUE = "$ESC[94m"
+    MAGENTA = "$ESC[95m"
+    CYAN = "$ESC[96m"
+    WHITE = "$ESC[97m"
+    DARKWHITE = "$ESC[37m" # not a real color
+    BLACK = "$ESC[90m"
+    DARKBLACK = "$ESC[90m"
 }
+
+$COLORS.RESET = $COLORS.$($AssistantColor.ToString())
 
 function WrapText {
     # Home grown stand in for python's textwrap (ansiwrap)
@@ -332,8 +343,8 @@ class Message {
     [string]$content;
     [string]$role;
 
-    static [string] $AI_COLOR = $script:COLORS.YELLOW
-    static [string] $USER_COLOR = $script:COLORS.BLUE
+    static [string] $AI_COLOR = $script:COLORS.$($script:AssistantColor.ToString())
+    static [string] $USER_COLOR = $script:COLORS.$($script:UserColor.ToString())
 
     static [string] $CHAT_URL = "https://api.openai.com/v1/chat/completions"
     static [string] $IMAGE_URL = "https://api.openai.com/v1/images/generations"
@@ -443,7 +454,7 @@ class Message {
             $script:COLORS.WHITE
         }
 
-        return $color + $messageContent + $script:COLORS.BRIGHTWHITE
+        return $color + $messageContent + $script:COLORS.WHITE
     }
 
     # also seems unnecessary could merge with history
@@ -534,7 +545,7 @@ class Message {
 
             if (Test-Path $filepath) {
                 Write-Host "A file with that name already exists. Overwrite? " -ForegroundColor Red -NoNewline
-                Write-Host "[$($script:COLORS.GREEN)y$($script:COLORS.BRIGHTWHITE)/$($script:COLORS.RED)n$($script:COLORS.BRIGHTWHITE)]"
+                Write-Host "[$($script:COLORS.DARKGREEN)y$($script:COLORS.WHITE)/$($script:COLORS.DARKRED)n$($script:COLORS.WHITE)]"
                 Write-Host "> " -NoNewline
                 if ($global:Host.UI.ReadLine() -ne "y") {
                     $filename = ""
@@ -544,7 +555,7 @@ class Message {
 
             if ($filename -eq "autoload.json") {
                 Write-Host "The conversation named 'autoload.json' is automatically loaded on startup. Is this okay? " -ForegroundColor Yellow -NoNewline
-                Write-Host "[$($script:COLORS.GREEN)y$($script:COLORS.BRIGHTWHITE)/$($script:COLORS.RED)n$($script:COLORS.BRIGHTWHITE)]"
+                Write-Host "[$($script:COLORS.DARKGREEN)y$($script:COLORS.WHITE)/$($script:COLORS.DARKRED)n$($script:COLORS.WHITE)]"
                 Write-Host "> " -NoNewline
                 if ($global:Host.UI.ReadLine() -ne "y") {
                     $filename = ""
@@ -607,8 +618,8 @@ class Message {
 
         } else {
             # If the user provided a comversation name
-            Write-Host "This will clear the current conversation. Continue?"`
-            "$($script:COLORS.BRIGHTWHITE)[$($script:COLORS.GREEN)y$($script:COLORS.BRIGHTWHITE)/$($script:COLORS.RED)n$($script:COLORS.BRIGHTWHITE)]" -ForegroundColor Red
+            Write-Host "This will clear the current conversation. Continue?" -NoNewline
+            Write-Host "[$($script:COLORS.DARKGREEN)y$($script:COLORS.WHITE)/$($script:COLORS.DARKRED)n$($script:COLORS.WHITE)]" -ForegroundColor Red
 
             # Make sure they have a chance to turn back
             Write-Host "> " -NoNewline
@@ -1050,11 +1061,8 @@ if ($Query) {
     ) | Out-Null
 
     # Give it a little memory and context because clarifications are helpful
-    if ($global:LastQuery) {
+    if ($global:LastQuery -and $global:LastResponse) {
         [Message]::AddMessage($global:LastQuery, "user") | Out-Null
-    }
-
-    if ($global:LastResponse) {
         [Message]::AddMessage($global:LastResponse, "assistant") | Out-Null
     }
 
@@ -1067,7 +1075,7 @@ if ($Query) {
     return ($response.content)
 }
 
-Write-Host (WrapText "Welcome to $($COLORS.GREEN)ChatGPT$($COLORS.BRIGHTWHITE), type $($COLORS.YELLOW)/exit$($COLORS.BRIGHTWHITE) to quit or $($COLORS.YELLOW)/help$($COLORS.BRIGHTWHITE) for a list of commands")
+Write-Host (WrapText "Welcome to $($COLORS.DARKGREEN)ChatGPT$($COLORS.WHITE), type $($COLORS.DARKYELLOW)/exit$($COLORS.WHITE) to quit or $($COLORS.DARKYELLOW)/help$($COLORS.WHITE) for a list of commands")
 
 # Load a conversation from a file if specified
 if ($Load) {
@@ -1080,7 +1088,7 @@ if (Test-Path (Join-Path $CONVERSATIONS_DIR "Autoload.json")) {
 
 try {
     while ($true) {
-        Write-Host "Chat > " -NoNewline -ForegroundColor Blue
+        Write-Host "Chat > " -NoNewline -ForegroundColor $UserColor
         $prompt = $Host.UI.ReadLine()
 
         # Do command handling
@@ -1090,6 +1098,8 @@ try {
 
             # Make sure you don't send nothing (the api doesn't like that)
             if (!$prompt) {
+                Write-Debug $AssistantColor.ToString()
+
                 # Move cusor back up like a disobedient child
                 $pos = $Host.UI.RawUI.CursorPosition
                 $pos.Y -= 1
