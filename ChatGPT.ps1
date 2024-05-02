@@ -47,7 +47,8 @@ param (
         "gpt-3.5",
         "gpt-3.5-turbo",
         "gpt-4",
-        "gpt-4-turbo"
+        "gpt-4-turbo",
+        "gemini"
     )]
     [string] $Model = "gpt-3.5-turbo", # gpt-4 is too expensive to be default
 
@@ -108,6 +109,7 @@ if (!(Test-Path $IMAGES_DIR)) {
 $IMAGES_DIR = Resolve-Path ($IMAGES_DIR)
 
 # Handle key state
+
 if (!$env:OPENAI_API_KEY -and !$Key) {
     Write-Host "OPEN AI API KEY NOT FOUND. GET ONE HERE: https://platform.openai.com/api-keys" -ForegroundColor Red
     Write-Host "Please input API key, or set it as an environment variable."
@@ -117,15 +119,6 @@ if (!$env:OPENAI_API_KEY -and !$Key) {
 
 if (!$Key) {
     $Key = $env:OPENAI_API_KEY
-}
-
-# the turbo models are better than the base models and are less expensive
-if ($model -eq "gpt-3" -or $model -eq "gpt-3.5") {
-    $model = "gpt-3.5-turbo"
-}
-
-if ($model -eq "gpt-4") {
-    $model = "gpt-4-turbo"
 }
 
 # This is just to confirm the key is valid, does not actually use the list of models.
@@ -147,6 +140,15 @@ try {
 
 if ($Key -ne $env:OPENAI_API_KEY) {
     [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")
+}
+
+# the turbo models are better than the base models and are less expensive
+if ($model -eq "gpt-3" -or $model -eq "gpt-3.5") {
+    $model = "gpt-3.5-turbo"
+}
+
+if ($model -eq "gpt-4") {
+    $model = "gpt-4-turbo"
 }
 
 $SYSTEM_MESSAGE = (
@@ -348,6 +350,7 @@ class Message {
 
     static [string] $CHAT_URL = "https://api.openai.com/v1/chat/completions"
     static [string] $IMAGE_URL = "https://api.openai.com/v1/images/generations"
+    static [string] $GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=$env:GOOGLE_API_KEY"
 
     static [System.Collections.ArrayList]$Messages = @()
 
@@ -377,7 +380,24 @@ class Message {
     static [Message] Submit() { # Submit messages to the GPT model and receive a response
         # Print thinking message
         Write-Host "Thinking...`r" -NoNewline
+        
+        if ($script:MODEL -eq "gemini") {
 
+            $body = [Message]::ConvertToGemini()
+
+            $response = [Message]::CallGemini($body)
+
+            if (!$response) {
+                return $null
+            }
+
+            $responseMessage = $response.candidates[0].content.parts[0].text
+
+            $assistantMessage = [Message]::AddMessage($responseMessage, "assistant")
+
+            return $assistantMessage
+
+        } else {
             # Define body for API call
             $body = @{
                 model = $script:MODEL; 
@@ -385,7 +405,7 @@ class Message {
             }
 
             # Main API call to OpenAI
-            $response = [Message]::Call([Message]::CHAT_URL, $body)
+            $response = [Message]::CallOpenAI([Message]::CHAT_URL, $body)
 
             if (!$response) {
                 return $null
@@ -398,9 +418,10 @@ class Message {
 
             # Returning the MESSAGE object, not a string
             return $assistantMessage
+        }
     }
 
-    static [psobject] Call([string]$url, [hashtable]$body) {
+    static [psobject] CallOpenAI([string]$url, [hashtable]$body) {
         try {
             $bodyJSON = $body | ConvertTo-Json -Compress
 
@@ -420,6 +441,92 @@ class Message {
             Write-Host "An error occurred: $_" -ForegroundColor Red
             return $null
         }
+    }
+
+    static [psobject] CallGemini([hashtable]$body) {
+        try {
+            $bodyJSON = $body | ConvertTo-Json -Depth 8 -Compress
+
+            # Main API call to Gemini
+            $response = Invoke-WebRequest `
+            -Uri ([Message]::GEMINI_URL) `
+            -Method Post `
+            -Headers @{
+                "Content-Type" = "application/json"
+            } `
+            -Body $bodyJSON | ConvertFrom-Json
+
+            return $response
+        } catch {
+            # Catching errors caused by the API call
+            Write-Host "An error occurred: $_" -ForegroundColor Red
+            return $null
+        }
+    }
+
+    static [hashtable] ConvertToGemini () {
+        # Converts the conversation to a gemini formatted document
+        # Hashtables are simple, so I use it when I create objects, but iwr returns PSObjects, hence the differing return types between here and the call functions
+
+        # Gemini has a couple stupid rules we have to work around.
+        # 1. The first message must be a user message
+        # 2. The last message must be a user message
+        # 3. There is no "system" message type, so we have to convert them to user messages
+        # 4. You can't have two user messages in a row, so we have to add a fake model message after each system message
+
+        $gemini = @{
+            contents = @()
+        }
+
+        foreach ($message in [Message]::Messages) {
+            $messageRole = if ($message.role -eq "user") {
+                "user"
+            } elseif ($message.role -eq "assistant") {
+                "model"
+            } else {
+                "system"
+            }
+
+            # turn system message to user message
+            if ($messageRole -eq "system") {
+                $newMessage = @{
+                    role = "user"
+                    parts = @(
+                        @{
+                            text = "System message: $($message.content)."
+                        }
+                    )
+                }
+                $gemini.contents += $newMessage
+
+                # Add a fake model response after the system message
+                if ($message -ne [Message]::Messages[-1]) {
+                    $newMessage = @{
+                        role = "model"
+                        parts = @(
+                            @{
+                                text = "Copy that!" # better than putting nothing, reinforces a sort of bubbly personality, whereas before it would mimic the user's tone
+                            }
+                        )
+                    }
+
+                    $gemini.contents += $newMessage
+                }
+            } else {
+                $newMessage = @{
+                    role = $messageRole
+                    parts = @(
+                        @{
+                            text = $message.content
+                        }
+                    )
+                }
+
+                $gemini.contents += $newMessage
+            }
+        }
+
+        return $gemini
     }
 
     static [string] Whisper([string]$Prompt) {
@@ -720,7 +827,7 @@ class Message {
 
     static ChangeModel ([string]$Model) {
         # I'm going to give people the chance to switch to GPT-4, even though it's inferior in every possible way to turbo models
-        $Models = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"
+        $Models = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gemini"
         $ImageModels = "dall-e-2", "dall-e-3"
 
         # Just print all model information if no model is provided
@@ -805,7 +912,7 @@ class Message {
             size = "1024x1024" # Default size
         }
 
-        $response = [Message]::Call([Message]::IMAGE_URL, $body)
+        $response = [Message]::CallOpenAI([Message]::IMAGE_URL, $body)
 
         # The api responds with a url of the image and not the image data itself
         $url = $response.data[0].url
