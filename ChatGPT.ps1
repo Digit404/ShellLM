@@ -72,7 +72,7 @@ param (
     [switch] $Clear,
 
     [Parameter(Mandatory=$false)]
-    [System.ConsoleColor] $AssistantColor = "Yellow",
+    [System.ConsoleColor] $AssistantColor = "DarkYellow",
 
     [Parameter(Mandatory=$false)]
     [System.ConsoleColor] $UserColor = "Blue"
@@ -1053,7 +1053,7 @@ DefineCommands
 # AskGPT mode, include the question in the command and it will try to answer as briefly as it can
 if ($Query) {
     [Message]::AddMessage(
-        "You will be asked one short question. You will be as brief as possible with your response, using incomplete sentences if necessary. " + 
+        "You will be asked one short query. If asked a question, you will be as brief as possible with your answer, using incomplete sentences if necessary. " + 
         "You will respond with text only, no new lines or markdown elements. " + 
         "If explicitly asked to write a command or script you will write *only* that and assume powershell. In this case forget about being brief. " +
         "After you respond it will be the end of the conversation, do not say goodbye.",
@@ -1098,7 +1098,6 @@ try {
 
             # Make sure you don't send nothing (the api doesn't like that)
             if (!$prompt) {
-                Write-Debug $AssistantColor.ToString()
 
                 # Move cusor back up like a disobedient child
                 $pos = $Host.UI.RawUI.CursorPosition
