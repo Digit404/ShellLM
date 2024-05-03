@@ -70,6 +70,9 @@ param (
     [string] $Key,
 
     [Parameter(Mandatory=$false)]
+    [string] $GeminiKey,
+
+    [Parameter(Mandatory=$false)]
     [switch] $Clear,
 
     [Parameter(Mandatory=$false)]
@@ -110,37 +113,60 @@ $IMAGES_DIR = Resolve-Path ($IMAGES_DIR)
 
 # Handle key state
 
-if (!$env:OPENAI_API_KEY -and !$Key) {
-    Write-Host "OPEN AI API KEY NOT FOUND. GET ONE HERE: https://platform.openai.com/api-keys" -ForegroundColor Red
-    Write-Host "Please input API key, or set it as an environment variable."
-    Write-Host "> " -NoNewline
-    $Key = $Host.UI.ReadLine()
-}
-
-if (!$Key) {
-    $Key = $env:OPENAI_API_KEY
-}
-
-# This is just to confirm the key is valid, does not actually use the list of models.
-try {
-    $response = Invoke-WebRequest `
-        -Uri https://api.openai.com/v1/models `
-        -Headers @{
-            "Authorization" = "Bearer $($Key)"
+function HandleOpenAIKeyState { # Just to group it together, this is the only place it's used
+    if (!$env:OPENAI_API_KEY -and !$script:Key) {
+        Write-Host "OPEN AI API KEY NOT FOUND. GET ONE HERE: https://platform.openai.com/api-keys" -ForegroundColor Red
+        Write-Host "Please input API key, or set it as an environment variable."
+        Write-Host "> " -NoNewline
+        $script:Key = $Host.UI.ReadLine()
+    }
+    
+    if (!$script:Key) {
+        $script:Key = $env:OPENAI_API_KEY
+    }
+    
+    # This is just to confirm the key is valid, does not actually use the list of models.
+    try {
+        $response = Invoke-WebRequest `
+            -Uri https://api.openai.com/v1/models `
+            -Headers @{
+                "Authorization" = "Bearer $($script:Key)"
+            }
+    } catch {
+        if (($_ | ConvertFrom-Json).error.code -eq "invalid_api_key") {
+            Write-Host "Invalid API key. Please try again." -ForegroundColor Red
+        } else {
+            Write-Host "Could not connect to OpenAI servers: $_"
         }
-} catch {
-    if (($_ | ConvertFrom-Json).error.code -eq "invalid_api_key") {
-        Write-Host "Invalid API key. Please try again." -ForegroundColor Red
-    } else {
-        Write-Host "Could not connect to OpenAI servers: $_"
+    
+        exit
+    }
+    
+    if ($script:Key -ne $env:OPENAI_API_KEY) {
+        [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $script:Key, "User")
+    }
+}
+
+function HandleGeminiKeyState { # This will only be called if the model is gemini
+    if (!$env:GOOGLE_API_KEY -and !$script:GeminiKey) {
+        Write-Host "GOOGLE API KEY NOT FOUND. GET ONE HERE: https://console.cloud.google.com/apis/credentials" -ForegroundColor Red
+        Write-Host "Please input API key, or set it as an environment variable."
+        Write-Host "> " -NoNewline
+        $script:GeminiKey = $Host.UI.ReadLine()
     }
 
-    return
+    if (!$script:GeminiKey) {
+        $script:GeminiKey = $env:GOOGLE_API_KEY
+    }
+
+    # There doesn't seem to be a simple way to test the key :(
+
+    if ($script:GeminiKey -ne $env:GOOGLE_API_KEY) {
+        [System.Environment]::SetEnvironmentVariable("GOOGLE_API_KEY", $script:GeminiKey, "User")
+    }
 }
 
-if ($Key -ne $env:OPENAI_API_KEY) {
-    [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")
-}
+HandleOpenAIKeyState
 
 # the turbo models are better than the base models and are less expensive
 if ($model -eq "gpt-3" -or $model -eq "gpt-3.5") {
@@ -350,7 +376,6 @@ class Message {
 
     static [string] $CHAT_URL = "https://api.openai.com/v1/chat/completions"
     static [string] $IMAGE_URL = "https://api.openai.com/v1/images/generations"
-    static [string] $GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=$env:GOOGLE_API_KEY"
 
     static [System.Collections.ArrayList]$Messages = @()
 
@@ -447,9 +472,14 @@ class Message {
         try {
             $bodyJSON = $body | ConvertTo-Json -Depth 8 -Compress
 
+            $model = "gemini-pro" # Used for if google takes 1.5 out of preview, currently 1.5 is rate limited to 2 requests per minute. Not useful
+
+            # Assemble the URL because google has never heard of a header
+            $url = "https://generativelanguage.googleapis.com/v1beta/models/$($model):generateContent?key=$script:GeminiKey"
+
             # Main API call to Gemini
             $response = Invoke-WebRequest `
-            -Uri ([Message]::GEMINI_URL) `
+            -Uri ($url) `
             -Method Post `
             -Headers @{
                 "Content-Type" = "application/json"
@@ -887,6 +917,10 @@ class Message {
 
             # Call the method again to show the available models
             [Message]::ChangeModel("")
+        }
+
+        if ($Model -eq "gemini") { # this is where we change gears to the gemini model
+            HandleGeminiKeyState
         }
     }
 
