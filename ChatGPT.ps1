@@ -186,7 +186,7 @@ $SYSTEM_MESSAGE = (
     'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want, and {RESET} to go back. ' +
     'If you write code, do not use "```". Use colors for syntax highlighting instead. ' +
     'Colors available are RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, GRAY, RESET. ' +
-    'You can also use DARK colors using {DARKCOLOR}. (E.g. {DARKRED}Hello{RESET}). There are no BRIGHT colors available.' 
+    'You can also use DARK colors using {DARKCOLOR}. (E.g. {DARKRED}Hello{RESET}).' 
 )
 
 # Colors for the terminal
@@ -209,6 +209,15 @@ $COLORS = @{
     DARKWHITE = "$ESC[37m" # not a real color
     BLACK = "$ESC[90m"
     DARKBLACK = "$ESC[90m"
+    # Bright colors (just the same as the normal colors)
+    BRIGHTRED = "$ESC[91m"
+    BRIGHTGREEN = "$ESC[92m"
+    BRIGHTYELLOW = "$ESC[93m"
+    BRIGHTBLUE = "$ESC[94m"
+    BRIGHTMAGENTA = "$ESC[95m"
+    BRIGHTCYAN = "$ESC[96m"
+    BRIGHTWHITE = "$ESC[97m"
+    BRIGHTBLACK = "$ESC[37m"
 }
 
 $COLORS.RESET = $COLORS.$($AssistantColor.ToString())
