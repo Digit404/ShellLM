@@ -1,82 +1,60 @@
-# ChatGPT PS
+# ShellLM
+A Versatile PowerShell-based LLM Interface
 
-This project is a terminal-based interface for interacting with OpenAI's ChatGPT model. It allows users to have text-based conversations with the AI, ask questions, and receive responses.
+## Overview
+
+ShellLM is a feature-rich and flexible terminal application that allows users to have text-based conversations with large language models (LLMs), including GPT-4 and Gemini. It provides an intuitive command-based interface, enabling users to easily interact with the models and explore their capabilities.
 
 ## Features
 
-- Simple and intuitive command-based interface
-- Colorful and formatted messages for easy readability
-- Conversation history and navigation
-- Saving and loading conversations to and from JSON files
+- Seamless communication with LLM APIs such as GPT-4 and Gemini
+- Colorful formatted messages for easy readability
+- Comprehensive conversation history and navigation
+- Conversation saving and loading to/from JSON files
 - Retry option to generate alternative responses
-- AskGPT mode for brief answers to questions
-- Supports GPT-3.5-turbo, GPT-4, and GPT-4-turbo
-- Image generation: Generate images using the DALL-E API. The generated images are saved in the `.\images` folder.
-- Custom instructions
+- AskLLM mode for concise answers to specific questions
+- Supports `GPT-3.5-turbo`, `GPT-4`,` GPT-4-turbo`, and `gemini-pro`
+- Image generation: Generate images using the DALL-E API (requires an OpenAI API key)
+- Custom instructions: Set specific guidelines for the model to follow during conversations
 - Automatically loads conversation 'autoload.json' on startup, automatically saves last conversation
 
 ## Installation
 
-1. Get an [Open AI API key](https://platform.openai.com/account/api-keys)
-	- Sign in to your OpenAI account on [OpenAI Platform](https://platform.openai.com/).
-	- Navigate to your account settings and select "API Keys".
-	- Create a new API key if you don't already have one.
+1. **Obtain an OpenAI API key:**
+   - Sign in to your OpenAI account and navigate to your account settings.
+   - Select "API Keys" and create a new API key if you don't already have one.
 
-2. Set API key as OPENAI_API_KEY environment variable. This can optionally be done within the script itself.
+2. **Set the API key as an environment variable:**
+   - Open a Command Prompt and enter the following command:
+     ```
+     [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "sk-...", "User")
+     ```
+   - Replace `"sk-..."` with your actual API key.
 
-	**Windows:**
-	- To set an environment variable on Windows, you can use the following command in Command Prompt:
-
-		```powershell
-		[System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "sk-...", "User")
-		```
-
-	- Make sure to replace `"sk-..."` with your actual API key.
-
-	**Mac/Linux:**
-	- To set an environment variable on Mac or Linux, you can use the following command in the terminal:
-
-		```powershell
-		export OPENAI_API_KEY='sk-...'
-		```
-
-	- Again, replace `'sk-...'` with your actual API key.
-
-	- Please note that the above instructions assume that you have the necessary permissions to set environment variables on your system.
-
-3. Clone the repository, or download and run the script:
-
-	```powershell
-	git clone https://github.com/Digit404/ChatGPT-PS.git
-	```
-
-4. Works best when added to PATH, so it can be used from anywhere!
+3. **Clone or download the repository:**
+   ```
+   git clone https://github.com/Digit404/ChatGPT-PS.git
+   ```
 
 ## Usage
 
-1. Enable running scripts on your machine
+1. **Start the ShellLM terminal interface**
+   ```
+   .\ShellLM.ps1
+   ```
 
-	```powershell
-	Set-ExecutionPolicy Bypass -Scope User
-	```
+2. **Interact with the model**
+   - Type your messages and press Enter to send them to the model.
+   - Use the available commands (listed below) to manage conversations, generate images, and customize the experience.
 
-1. Start the ChatGPT terminal interface:
+- Alternatively, you can append your prompt after the file name to get a quick response without entering the interactive shell:
+     ```
+     .\ShellLM.ps1 "What is the capital of Ecuador?"
+     ```
 
-	```powershell
-	.\ChatGPT.ps1
-	```
+### Commands
 
-2. Or add the prompt after the file to get a brief answer to your question
-
-	```powershell
-	.\ChatGPT.ps1 "What is the capital of Ecuador?"
-	```
-
-## Commands
-
-The following commands are available within the terminal interface:
-
-- `/bye` (`/goodbye`): Exit and receive a goodbye message.
+- `/bye` (`/goodbye`): Exit the program with a farewell message.
 - `/help`: Display a list of available commands and their descriptions.
 - `/exit` (`/quit`): Exit the program immediately.
 - `/save [filename]` (`/export`): Save the current conversation to a JSON file.
@@ -88,13 +66,16 @@ The following commands are available within the terminal interface:
 - `/model [model]`: Change the model used for generating responses.
 - `/imagine {prompt}` (`/generate`, `/image`, `/img`): Generate an image based on a given prompt.
 - `/copy [number of messages back]` (`/cp`): Copy the last response to the clipboard (without formatting).
-- `/paste [prompt]` (`/clipboard`): Give the model the content of your clipboard as context.
-- `/rules [instructions]` (`/instructions`): Set custom instructions the model has to follow for the conversation.
+- `/paste [prompt]` (`/clipboard`): Provide the model with the content of your clipboard as context.
+- `/rules [instructions]` (`/instructions`): Set custom instructions for the model to follow during the conversation.
 
-Use `/help` for more information and usage.
+### Troubleshooting
 
-## Troubleshooting
+If you encounter an issue initially running the program, make sure you have enabled running scripts on your system by running this command
+	```powershell
+	Set-ExecutionPolicy Bypass -Scope User
+	```
 
-If you encounter any issues during the installation or usage of the script, double-check that you have set the `OPENAI_API_KEY` environment variable correctly.
+If you encounter any further issues, please double-check that you have correctly set the `OPENAI_API_KEY` environment variable. If the problem persists, please open an issue on the GitHub repository for further assistance.
 
-If the problem persists, feel free to open an issue on the [GitHub repository](https://github.com/Digit404/ChatGPT-PS/issues) for further assistance.
+**Note:** This script is still under development and may undergo further changes in the future.

@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-    This script is a PowerShell implementation of a chatbot using OpenAI's GPT models.
+    This script is a PowerShell implementation of a chatbot using OpenAI's GPT models, as well as Google's Gemini.
 
 .DESCRIPTION
-    The script allows users to interact with the chatbot by sending messages and receiving responses from the GPT model. It supports multiple commands and provides a conversational interface.
+    The script allows users to interact with the chatbot by sending messages and receiving responses from the LLM. It supports multiple commands and provides a conversational interface.
 
 .PARAMETER Query
     Specifies the user's message/query to be sent to the chatbot.
@@ -17,9 +17,19 @@
 .PARAMETER Load
     Specifies a file containing a conversation to load. This can be used to continue a previous conversation.
 
+.PARAMETER NoAutoload
+    Specifies that the script should not automatically load the conversation from the "autoload.json" file on startup.
+
 .PARAMETER Key
     Specifies the OpenAI API key to use for making API calls to the OpenAI chat/completions endpoint.
     If not provided, the script will prompt the user to enter the API key. It will also automatically set the API key as an environment variable.
+
+.PARAMETER GeminiKey
+    Specifies the Google API key to use for making API calls to the Google Gemini endpoint.
+    If not provided, the script will prompt the user to enter the API key. It will also automatically set the API key as an environment variable.
+
+.PARAMETER Clear
+    Clears the AskLLM context, including the last query and response.
 
 .NOTES
     Version 2.3
@@ -29,12 +39,12 @@
     - The script provides a conversational history and allows exporting the conversation to a JSON file.
 
 .EXAMPLE
-    PS C:\> .\ChatGPT.ps1 -Model "gpt-4" -Query "What is the capital of ecuador?"
+    PS C:\> .\ShellLM.ps1 -Model "gpt-4" -Query "What is the capital of ecuador?"
 
     This example runs the script using the "gpt-4" model and asks the question "What is the capital of ecuador?".
 
 .EXAMPLE
-    PS C:\> .\ChatGPT.ps1 -Load conversation
+    PS C:\> .\ShellLM.ps1 -Load conversation
 
     This example loads a conversation from the "conversation.json" file within the conversations dir and continues the conversation.
 #>
@@ -67,6 +77,11 @@ param (
     [string] $Load,
 
     [Parameter(Mandatory=$false)]
+    [Alias("NoLoad")]
+    [switch] $NoAutoload,
+
+    [Parameter(Mandatory=$false)]
+    [Alias("k")]
     [string] $Key,
 
     [Parameter(Mandatory=$false)]
@@ -91,7 +106,7 @@ $CONVERSATIONS_DIR = Join-Path $PSScriptRoot .\conversations\
 if ($Clear) {
     $global:LastQuery = ""
     $global:LastResponse = ""
-    Write-Host "AskGPT context cleared" -ForegroundColor Yellow
+    Write-Host "AskLLM context cleared" -ForegroundColor Yellow
     if (!$Query) {
         exit
     }
@@ -415,7 +430,7 @@ class Message {
         return [Message]::Submit()
     }
 
-    static [Message] Submit() { # Submit messages to the GPT model and receive a response
+    static [Message] Submit() { # Submit messages to the LLM and receive a response
         # Print thinking message
         Write-Host "Thinking...`r" -NoNewline
         
@@ -634,7 +649,7 @@ class Message {
         $messageContent = $this.GetColoredMessage()
 
         $Indent = if ($this.role -eq "assistant") {
-            ([Message]::AI_COLOR + "GPT: ")
+            ([Message]::AI_COLOR + "LLM: ")
         } elseif ($this.role -eq "user") {
             ([Message]::USER_COLOR + "You: ")
         } else {
@@ -652,7 +667,7 @@ class Message {
     static Reset() {
         [Message]::Messages.Clear()
 
-        if (Test-Path (Join-Path $script:CONVERSATIONS_DIR "Autoload.json")) {
+        if ((Test-Path (Join-Path $script:CONVERSATIONS_DIR "Autoload.json")) -and !$script:NoAutoload) {
             [Message]::LoadFile("Autoload")
         } else {
             # Default message to start the conversation and inform the bot on how to use the colors
@@ -689,7 +704,7 @@ class Message {
                     # Use timestamp if you're a square
                     # $timestamp = [DateTime]::Now.ToString("yyyy-MM-dd_HH-mm-ss")
                     # $filename = "conversation-$timestamp"
-                    # Ask chatgpt for a name for the conversation
+                    # Ask LLM for a name for the conversation
 
                     $filename = [Message]::Whisper("Reply only with a good very short name that summarizes this conversation in a filesystem compatible string, no quotes, no colors, no file extensions")
 
@@ -1230,7 +1245,7 @@ function DefineCommands {
 
 DefineCommands
 
-# AskGPT mode, include the question in the command and it will try to answer as briefly as it can
+# AskLLM mode, include the question in the command and it will try to answer as briefly as it can
 if ($Query) {
     [Message]::AddMessage(
         "You will be asked one short query. If asked a question, you will be as brief as possible with your answer, using incomplete sentences if necessary. " + 
@@ -1255,14 +1270,14 @@ if ($Query) {
     return ($response.content)
 }
 
-Write-Host (WrapText "Welcome to $($COLORS.DARKGREEN)ChatGPT$($COLORS.WHITE), type $($COLORS.DARKYELLOW)/exit$($COLORS.WHITE) to quit or $($COLORS.DARKYELLOW)/help$($COLORS.WHITE) for a list of commands")
+Write-Host (WrapText "Welcome to $($COLORS.DARKGREEN)ShellLM$($COLORS.WHITE), type $($COLORS.DARKYELLOW)/exit$($COLORS.WHITE) to quit or $($COLORS.DARKYELLOW)/help$($COLORS.WHITE) for a list of commands")
 
 # Load a conversation from a file if specified
 if ($Load) {
     [Message]::LoadFile($Load)
 }
 
-if (Test-Path (Join-Path $CONVERSATIONS_DIR "Autoload.json")) {
+if ((Test-Path (Join-Path $CONVERSATIONS_DIR "Autoload.json")) -and !$Load -and !$NoAutoload) {
     [Message]::LoadFile("Autoload")
 }
 
