@@ -423,9 +423,7 @@ class Message {
             $responseMessage = $response.candidates[0].content.parts[0].text
 
             $assistantMessage = [Message]::AddMessage($responseMessage, "assistant")
-
-            return $assistantMessage
-
+            
         } else {
             # Define body for API call
             $body = @{
@@ -441,13 +439,13 @@ class Message {
             }
 
             $assistantMessage = [Message]::AddMessage($response.choices[0].message.content, $response.choices[0].message.role)
-
-            # Clear the thinking message on the event that the message is very short.
-            Write-Host "              `r" -NoNewline
-
-            # Returning the MESSAGE object, not a string
-            return $assistantMessage
         }
+
+        # Clear the thinking message on the event that the message is very short.
+        Write-Host "              `r" -NoNewline
+
+        # Returning the MESSAGE object, not a string
+        return $assistantMessage
     }
 
     static [psobject] CallOpenAI([string]$url, [hashtable]$body) {
@@ -506,7 +504,7 @@ class Message {
         # 1. The first message must be a user message
         # 2. The last message must be a user message
         # 3. There is no "system" message type, so we have to convert them to user messages
-        # 4. You can't have two user messages in a row, so we have to add a fake model message after each system message
+        # 4. You can't have two messages of the same role in a row, so we have to add fake model messages in between
 
         $gemini = @{
             contents = @()
@@ -521,45 +519,67 @@ class Message {
                 "system"
             }
 
+            $messageContent = $message.content
+
             # turn system message to user message
             if ($messageRole -eq "system") {
-                $newMessage = @{
-                    role = "user"
-                    parts = @(
-                        @{
-                            text = "System message: $($message.content)."
-                        }
-                    )
-                }
-                $gemini.contents += $newMessage
-
-                # Add a fake model response after the system message
-                if ($message -ne [Message]::Messages[-1]) {
-                    $newMessage = @{
-                        role = "model"
-                        parts = @(
-                            @{
-                                text = "Copy that!" # better than putting nothing, reinforces a sort of bubbly personality, whereas before it would mimic the user's tone
-                            }
-                        )
+                $messageRole = "user"
+                $messageContent = "SYSTEM MESSAGE: $($message.content)."
+            }
+            
+            $newMessage = @{
+                role = $messageRole
+                parts = @(
+                    @{
+                        text = $messageContent
                     }
+                )
+            }
 
-                    $gemini.contents += $newMessage
-                }
-            } else {
-                $newMessage = @{
+            $gemini.contents += $newMessage
+        }
+
+        # Insert fake messages to work around gemini's limitations
+
+        if ($gemini.contents[0].role -ne "user") {
+            $gemini.contents.Insert(0, @{
+                role = "user"
+                parts = @(
+                    @{
+                        text = "..."
+                    }
+                )
+            })
+        }
+
+        if ($gemini.contents[-1].role -ne "user") {
+            $gemini.contents.Add(@{
+                role = "user"
+                parts = @(
+                    @{
+                        text = "..."
+                    }
+                )
+            })
+        }
+
+        for ($i = 1; $i -lt $gemini.contents.Count; $i++) {
+            if ($gemini.contents[$i].role -eq $gemini.contents[$i - 1].role) {
+
+                $messageRole = $gemini.contents[$i].role -eq "user" ? "model" : "user"
+
+                $gemini.contents.Insert($i, @{
                     role = $messageRole
                     parts = @(
                         @{
-                            text = $message.content
+                            text = "..."
                         }
                     )
-                }
-
-                $gemini.contents += $newMessage
+                })
             }
         }
 
+        # For testing purposes
         Write-Debug ($gemini | ConvertTo-Json -Depth 8)
 
         return $gemini
