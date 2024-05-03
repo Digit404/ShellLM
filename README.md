@@ -33,7 +33,7 @@ ShellLM is a feature-rich and flexible terminal application that allows users to
 
 3. **Clone or download the repository:**
    ```
-   git clone https://github.com/Digit404/ChatGPT-PS.git
+   git clone https://github.com/Digit404/ShellLM.git
    ```
 
 ## Usage
