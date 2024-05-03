@@ -186,7 +186,7 @@ $SYSTEM_MESSAGE = (
     'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want, and {RESET} to go back. ' +
     'If you write code, do not use "```". Use colors for syntax highlighting instead. ' +
     'Colors available are RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, GRAY, RESET. ' +
-    'You can also use DARK colors using {DARKCOLOR}. (E.g. {DARKRED}Hello{RESET})'
+    'You can also use DARK colors using {DARKCOLOR}. (E.g. {DARKRED}Hello{RESET}). There are no BRIGHT colors available.' 
 )
 
 # Colors for the terminal
@@ -412,7 +412,9 @@ class Message {
         
         if ($script:MODEL -eq "gemini") {
 
-            $body = [Message]::ConvertToGemini()
+            $body = @{
+                contents = [Message]::ConvertToGemini()
+            }
 
             $response = [Message]::CallGemini($body)
 
@@ -496,7 +498,7 @@ class Message {
         }
     }
 
-    static [hashtable] ConvertToGemini () {
+    static [System.Collections.ArrayList] ConvertToGemini () {
         # Converts the conversation to a format gemini can eat
         # Hashtables are simple, so I use it when I create objects, but iwr returns PSObjects, hence the differing return types between here and the call functions
 
@@ -506,9 +508,7 @@ class Message {
         # 3. There is no "system" message type, so we have to convert them to user messages
         # 4. You can't have two messages of the same role in a row, so we have to add fake model messages in between
 
-        $gemini = @{
-            contents = @()
-        }
+        [System.Collections.ArrayList] $contents = @()
 
         foreach ($message in [Message]::Messages) {
             $messageRole = if ($message.role -eq "user") {
@@ -536,13 +536,13 @@ class Message {
                 )
             }
 
-            $gemini.contents += $newMessage
+            $contents += $newMessage
         }
 
         # Insert fake messages to work around gemini's limitations
 
-        if ($gemini.contents[0].role -ne "user") {
-            $gemini.contents.Insert(0, @{
+        if ($contents[0].role -ne "user") {
+            $contents.Insert(0, @{
                 role = "user"
                 parts = @(
                     @{
@@ -552,8 +552,8 @@ class Message {
             })
         }
 
-        if ($gemini.contents[-1].role -ne "user") {
-            $gemini.contents.Add(@{
+        if ($contents[-1].role -ne "user") {
+            $contents.Add(@{
                 role = "user"
                 parts = @(
                     @{
@@ -563,12 +563,12 @@ class Message {
             })
         }
 
-        for ($i = 1; $i -lt $gemini.contents.Count; $i++) {
-            if ($gemini.contents[$i].role -eq $gemini.contents[$i - 1].role) {
+        for ($i = 1; $i -lt $contents.Count; $i++) {
+            if ($contents[$i].role -eq $contents[$i - 1].role) {
 
-                $messageRole = $gemini.contents[$i].role -eq "user" ? "model" : "user"
+                $messageRole = $contents[$i].role -eq "user" ? "model" : "user"
 
-                $gemini.contents.Insert($i, @{
+                $contents.Insert($i, @{
                     role = $messageRole
                     parts = @(
                         @{
@@ -580,9 +580,9 @@ class Message {
         }
 
         # For testing purposes
-        Write-Debug ($gemini | ConvertTo-Json -Depth 8)
+        Write-Debug ($contents | ConvertTo-Json -Depth 8)
 
-        return $gemini
+        return $contents
     }
 
     static [string] Whisper([string]$Prompt) {
