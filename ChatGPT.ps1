@@ -127,11 +127,11 @@ function HandleOpenAIKeyState { # Just to group it together, this is the only pl
     
     # This is just to confirm the key is valid, does not actually use the list of models.
     try {
-        $response = Invoke-WebRequest `
+        Invoke-WebRequest `
             -Uri https://api.openai.com/v1/models `
             -Headers @{
                 "Authorization" = "Bearer $($script:Key)"
-            }
+            } | Out-Null
     } catch {
         if (($_ | ConvertFrom-Json).error.code -eq "invalid_api_key") {
             Write-Host "Invalid API key. Please try again." -ForegroundColor Red
@@ -149,7 +149,7 @@ function HandleOpenAIKeyState { # Just to group it together, this is the only pl
 
 function HandleGeminiKeyState { # This will only be called if the model is gemini
     if (!$env:GOOGLE_API_KEY -and !$script:GeminiKey) {
-        Write-Host "GOOGLE API KEY NOT FOUND. GET ONE HERE: https://console.cloud.google.com/apis/credentials" -ForegroundColor Red
+        Write-Host "GOOGLE API KEY NOT FOUND. GET ONE HERE: https://aistudio.google.com/app/apikey" -ForegroundColor Red
         Write-Host "Please input API key, or set it as an environment variable."
         Write-Host "> " -NoNewline
         $script:GeminiKey = $Host.UI.ReadLine()
@@ -167,6 +167,10 @@ function HandleGeminiKeyState { # This will only be called if the model is gemin
 }
 
 HandleOpenAIKeyState
+
+if ($Model -eq "gemini") {
+    HandleGeminiKeyState
+}
 
 # the turbo models are better than the base models and are less expensive
 if ($model -eq "gpt-3" -or $model -eq "gpt-3.5") {
@@ -495,7 +499,7 @@ class Message {
     }
 
     static [hashtable] ConvertToGemini () {
-        # Converts the conversation to a gemini formatted document
+        # Converts the conversation to a format gemini can eat
         # Hashtables are simple, so I use it when I create objects, but iwr returns PSObjects, hence the differing return types between here and the call functions
 
         # Gemini has a couple stupid rules we have to work around.
@@ -555,6 +559,8 @@ class Message {
                 $gemini.contents += $newMessage
             }
         }
+
+        Write-Debug ($gemini | ConvertTo-Json -Depth 8)
 
         return $gemini
     }
@@ -862,10 +868,6 @@ class Message {
 
         # Just print all model information if no model is provided
         if (!$Model) {
-            Write-Host "Active models:`n"
-            Write-Host "Text:`t$script:MODEL" -ForegroundColor DarkYellow
-            Write-Host "Image:`t$script:ImageModel" -ForegroundColor Blue
-
             Write-Host "`nAvailable models:"
             Write-Host "`nText Models:" -ForegroundColor DarkYellow
 
@@ -1052,15 +1054,23 @@ class Message {
 
         if (!$Instructions) {
             if (!$currentInstructions) {
-                Write-Host "No instructions set. Set them with /rules [instructions]" -ForegroundColor Red
+                Write-Host "No instructions set. Set them with '/rules [instructions]'" -ForegroundColor Red
                 return
             }
 
             Write-Host "Custom instructions:`n" -ForegroundColor DarkYellow
             Write-Host (WrapText -Text $currentInstructions -Indent 5)
-            Write-Host "`nChange instructions by typing /instructions [instructions]" -ForegroundColor DarkYellow
+            Write-Host "`nChange instructions by typing '/rules [instructions]', or use '/rules clear' to clear them" -ForegroundColor DarkYellow
             return
 
+        } elseif ($Instructions -eq "clear") {
+            if (!$currentInstructions) {
+                Write-Host "No instructions set." -ForegroundColor Red
+                return
+            }
+
+            [Message]::Messages.RemoveAt(1)
+            Write-Host "Instructions cleared" -ForegroundColor Green
         } else {
             $newObject = [Message]::new($Instructions, "system")
 
