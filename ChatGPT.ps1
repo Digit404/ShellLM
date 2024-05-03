@@ -456,13 +456,13 @@ class Message {
 
             # Main API call to OpenAI
             $response = Invoke-WebRequest `
-            -Uri $url `
-            -Method Post `
-            -Headers @{
-                "Authorization" = "Bearer $script:Key"; 
-                "Content-Type" = "application/json"
-            } `
-            -Body $bodyJSON | ConvertFrom-Json
+                -Uri $url `
+                -Method Post `
+                -Headers @{
+                    "Authorization" = "Bearer $script:Key"; 
+                    "Content-Type" = "application/json"
+                } `
+                -Body $bodyJSON | ConvertFrom-Json
 
             return $response
         } catch {
@@ -483,12 +483,12 @@ class Message {
 
             # Main API call to Gemini
             $response = Invoke-WebRequest `
-            -Uri ($url) `
-            -Method Post `
-            -Headers @{
-                "Content-Type" = "application/json"
-            } `
-            -Body $bodyJSON | ConvertFrom-Json
+                -Uri ($url) `
+                -Method Post `
+                -Headers @{
+                    "Content-Type" = "application/json"
+                } `
+                -Body $bodyJSON | ConvertFrom-Json
 
             return $response
         } catch {
@@ -498,7 +498,7 @@ class Message {
         }
     }
 
-    static [System.Collections.ArrayList] ConvertToGemini () {
+    static [array] ConvertToGemini () {
         # Converts the conversation to a format gemini can eat
         # Hashtables are simple, so I use it when I create objects, but iwr returns PSObjects, hence the differing return types between here and the call functions
 
@@ -582,7 +582,7 @@ class Message {
         # For testing purposes
         Write-Debug ($contents | ConvertTo-Json -Depth 8)
 
-        return $contents
+        return [array]$contents
     }
 
     static [string] Whisper([string]$Prompt) {
@@ -1005,9 +1005,9 @@ class Message {
         # For some reason clipboard content is an array of strings
         $ClipboardContent = $ClipboardContent -join "`n"
 
-        # Add the messages in this order because it makes more sense to me
-        [Message]::AddMessage($prompt, "user")
+        # Add the messages in this order because I accidentally trained gemini to be a smartass
         [Message]::AddMessage("Contents of user clipboard: $ClipboardContent", "system")
+        [Message]::AddMessage($prompt, "user")
 
         Write-Host "Clipboard content added for context:`n" -ForegroundColor Green
 
