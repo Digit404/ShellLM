@@ -3,17 +3,17 @@ A Versatile PowerShell-based LLM Interface
 
 ## Overview
 
-ShellLM is a feature-rich and flexible terminal application that allows users to have text-based conversations with large language models (LLMs), including GPT-4 and Gemini. It provides an intuitive command-based interface, enabling users to easily interact with the models and explore their capabilities.
+ShellLM is a feature-rich and flexible terminal application that allows users to have text-based conversations with large language models (LLMs), including GPT-4, Gemini, and Claude 3. It provides an intuitive command-based interface, enabling users to easily interact with the models and explore their capabilities.
 
 ## Features
 
-- Seamless communication with LLM APIs such as GPT-4 and Gemini
+- Seamless communication with LLM APIs such as GPT-4, Gemini, and Claude 3
 - Colorful formatted messages for easy readability
 - Comprehensive conversation history and navigation
 - Conversation saving and loading to/from JSON files
 - Retry option to generate alternative responses
 - AskLLM mode for concise answers to specific questions
-- Supports `GPT-3.5-turbo`, `GPT-4`,` GPT-4-turbo`, and `gemini-pro`
+- Supports `GPT-3.5-turbo`, `GPT-4`,` GPT-4-turbo`, `gemini-pro`, and the three `claude-3` models
 - Image generation: Generate images using the DALL-E API (requires an OpenAI API key)
 - Custom instructions: Set specific guidelines for the model to follow during conversations
 - Automatically loads conversation 'autoload.json' on startup, automatically saves last conversation

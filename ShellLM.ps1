@@ -32,7 +32,7 @@
     Clears the AskLLM context, including the last query and response.
 
 .NOTES
-    Version 2.3
+    Version 2.5
     - This script requires an OpenAI API key to make API calls to the OpenAI chat/completions endpoint.
     - The script uses ANSI escape codes for color formatting in the terminal.
     - The script supports various commands that can be used to interact with the chatbot.
@@ -58,7 +58,11 @@ param (
         "gpt-3.5-turbo",
         "gpt-4",
         "gpt-4-turbo",
-        "gemini"
+        "gemini",
+        "claude-3",
+        "claude-3-opus", 
+        "claude-3-sonnet", 
+        "claude-3-haiku"
     )]
     [string] $Model = "gpt-3.5-turbo", # gpt-4 is too expensive to be default
 
@@ -181,10 +185,29 @@ function HandleGeminiKeyState { # This will only be called if the model is gemin
     }
 }
 
+function HandleAnthropicKeyState { # This will only be called if the model is claude-3
+    if (!$env:ANTHROPIC_API_KEY -and !$script:AnthropicKey) {
+        Write-Host "ANTHROPIC API KEY NOT FOUND. GET ONE HERE: https://console.anthropic.com/settings/keys" -ForegroundColor Red
+        Write-Host "Please input API key, or set it as an environment variable."
+        Write-Host "> " -NoNewline
+        $script:AnthropicKey = $Host.UI.ReadLine()
+    }
+
+    if (!$script:AnthropicKey) {
+        $script:AnthropicKey = $env:ANTHROPIC_API_KEY
+    }
+
+    if ($script:AnthropicKey -ne $env:ANTHROPIC_API_KEY) {
+        [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $script:AnthropicKey, "User")
+    }
+}
+
 HandleOpenAIKeyState
 
 if ($Model -eq "gemini") {
     HandleGeminiKeyState
+} elseif ($Model -like "claude*") {
+    HandleAnthropicKeyState
 }
 
 # the turbo models are better than the base models and are less expensive
@@ -194,6 +217,10 @@ if ($model -eq "gpt-3" -or $model -eq "gpt-3.5") {
 
 if ($model -eq "gpt-4") {
     $model = "gpt-4-turbo"
+}
+
+if ($model -eq "claude-3") {
+    $model = "claude-3-sonnet"
 }
 
 $SYSTEM_MESSAGE = (
@@ -402,8 +429,9 @@ class Message {
     static [string] $AI_COLOR = $script:COLORS.$($script:AssistantColor.ToString())
     static [string] $USER_COLOR = $script:COLORS.$($script:UserColor.ToString())
 
-    static [string] $CHAT_URL = "https://api.openai.com/v1/chat/completions"
-    static [string] $IMAGE_URL = "https://api.openai.com/v1/images/generations"
+    static [string] $OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
+    static [string] $OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations"
+    static [string] $ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
     static [System.Collections.ArrayList]$Messages = @()
 
@@ -433,38 +461,60 @@ class Message {
     static [Message] Submit() { # Submit messages to the LLM and receive a response
         # Print thinking message
         Write-Host "Thinking...`r" -NoNewline
+
+        $assistantMessage = $null
+
+        switch ($script:MODEL) {
+            "gemini" { 
+                $body = @{
+                    contents = [Message]::ConvertToGemini()
+                }
         
-        if ($script:MODEL -eq "gemini") {
-
-            $body = @{
-                contents = [Message]::ConvertToGemini()
+                $response = [Message]::CallGemini($body)
+        
+                if (!$response) {
+                    return $null
+                }
+        
+                $responseMessage = $response.candidates[0].content.parts[0].text
+                $assistantMessage = [Message]::AddMessage($responseMessage, "assistant")
             }
-
-            $response = [Message]::CallGemini($body)
-
-            if (!$response) {
-                return $null
+            {$_ -like "claude*"} {
+                $Model = switch ($script:MODEL) {
+                    "claude-3-opus" { "claude-3-opus-20240229" }
+                    "claude-3-haiku" { "claude-3-haiku-20240307" }
+                    default { "claude-3-sonnet-20240229" }
+                }
+        
+                $body = @{
+                    model = $Model
+                    max_tokens = 4000; # Required, 4000 recommended by Anthropic, but seems kinda small
+                    messages = [Message]::ConvertToAnthropic()
+                }
+        
+                $response = [Message]::CallAnthropic([Message]::ANTHROPIC_URL, $body)
+        
+                if (!$response) {
+                    return $null
+                }
+        
+                $responseMessage = $response.content[-1].text
+                $assistantMessage = [Message]::AddMessage($responseMessage, "assistant")
             }
-
-            $responseMessage = $response.candidates[0].content.parts[0].text
-
-            $assistantMessage = [Message]::AddMessage($responseMessage, "assistant")
-            
-        } else {
-            # Define body for API call
-            $body = @{
-                model = $script:MODEL; 
-                messages = [Message]::Messages
+            default {
+                $body = @{
+                    model = $script:MODEL
+                    messages = [Message]::Messages
+                }
+        
+                $response = [Message]::CallOpenAI([Message]::OPENAI_CHAT_URL, $body)
+        
+                if (!$response) {
+                    return $null
+                }
+        
+                $assistantMessage = [Message]::AddMessage($response.choices[0].message.content, $response.choices[0].message.role)
             }
-
-            # Main API call to OpenAI
-            $response = [Message]::CallOpenAI([Message]::CHAT_URL, $body)
-
-            if (!$response) {
-                return $null
-            }
-
-            $assistantMessage = [Message]::AddMessage($response.choices[0].message.content, $response.choices[0].message.role)
         }
 
         # Clear the thinking message on the event that the message is very short.
@@ -522,6 +572,33 @@ class Message {
         }
     }
 
+    static [psobject] CallAnthropic([string]$url, [hashtable]$body) {
+        try {
+            $bodyJSON = $body | ConvertTo-Json -Depth 8 -Compress
+
+            Write-Debug $bodyJSON
+
+            # Claude is extremely picky about it's header, needs version
+            $response = Invoke-WebRequest `
+                -Uri $url `
+                -Method Post `
+                -Headers @{
+                    "anthropic-version" = "2023-06-01";
+                    "x-api-key" = $script:AnthropicKey;
+                    "Content-Type" = "application/json"
+                } `
+                -Body $bodyJSON | ConvertFrom-Json
+
+            Write-Debug ($response | ConvertTo-Json -Depth 8)
+
+            return $response
+        } catch {
+            # Catching errors caused by the API call
+            Write-Host "An error occurred: $_" -ForegroundColor Red
+            return $null
+        }
+    }
+
     static [array] ConvertToGemini () {
         # Converts the conversation to a format gemini can eat
         # Hashtables are simple, so I use it when I create objects, but iwr returns PSObjects, hence the differing return types between here and the call functions
@@ -535,22 +612,31 @@ class Message {
         [System.Collections.ArrayList] $contents = @()
 
         foreach ($message in [Message]::Messages) {
-            $messageRole = if ($message.role -eq "user") {
-                "user"
-            } elseif ($message.role -eq "assistant") {
-                "model"
-            } else {
-                "system"
-            }
-
-            $messageContent = $message.content
-
-            # turn system message to user message
-            if ($messageRole -eq "system") {
+            
+            if ($message.role -eq "system") {
                 $messageRole = "user"
                 $messageContent = "SYSTEM MESSAGE: $($message.content)."
+            } else {
+                $messageRole = $message.role
+                $messageContent = $message.content
             }
-            
+
+            if ($messageRole -eq "assistant") {
+                $messageRole = "model"
+            }
+
+            # add fake user message to start, if it's not already a user message
+            if (!$contents -and $messageRole -eq "model") {
+                $contents.Add(@{
+                    role = "user"
+                    parts = @(
+                        @{
+                            text = "..."
+                        }
+                    )
+                })
+            }
+
             $newMessage = @{
                 role = $messageRole
                 parts = @(
@@ -560,40 +646,9 @@ class Message {
                 )
             }
 
-            $contents += $newMessage
-        }
-
-        # Insert fake messages to work around gemini's limitations
-
-        if ($contents[0].role -ne "user") {
-            $contents.Insert(0, @{
-                role = "user"
-                parts = @(
-                    @{
-                        text = "..."
-                    }
-                )
-            })
-        }
-
-        if ($contents[-1].role -ne "user") {
-            $contents.Add(@{
-                role = "user"
-                parts = @(
-                    @{
-                        text = "..."
-                    }
-                )
-            })
-        }
-
-        for ($i = 1; $i -lt $contents.Count; $i++) {
-            if ($contents[$i].role -eq $contents[$i - 1].role) {
-
-                $messageRole = $contents[$i].role -eq "user" ? "model" : "user"
-
-                $contents.Insert($i, @{
-                    role = $messageRole
+            if ($messageRole -eq $contents[-1].role) {
+                $contents.Add(@{
+                    role = $messageRole -eq "user" ? "model" : "user"
                     parts = @(
                         @{
                             text = "..."
@@ -601,10 +656,54 @@ class Message {
                     )
                 })
             }
+
+            $contents += $newMessage
         }
 
         # For testing purposes
         Write-Debug ($contents | ConvertTo-Json -Depth 8)
+
+        return [array]$contents
+    }
+
+    static [array] ConvertToAnthropic () {
+        # Anthropic seems to have the same limitations as gemini, so we have to do the same thing
+
+        [System.Collections.ArrayList] $contents = @()
+
+        # Translate each message
+        foreach ($message in [Message]::Messages) {
+            
+            # turn system message into clumsy user message
+            if ($message.role -eq "system") {
+                $messageRole = "user"
+                $messageContent = "SYSTEM MESSAGE: $($message.content)."
+            } else {
+                $messageRole = $message.role
+                $messageContent = $message.content
+            }
+
+            if (!$contents -and $messageRole -eq "assistant") {
+                $contents.Add(@{
+                    role = "user"
+                    content = "..."
+                })
+            }
+
+            $newMessage = @{
+                role = $messageRole
+                content = $messageContent
+            }
+
+            if ($messageRole -eq $contents[-1].role) {
+                $contents.Add(@{
+                    role = $messageRole -eq "user" ? "assistant" : "user"
+                    content = "..."
+                })
+            }
+
+            $contents += $newMessage
+        }
 
         return [array]$contents
     }
@@ -805,8 +904,8 @@ class Message {
 
         } else {
             # If the user provided a comversation name
-            Write-Host "This will clear the current conversation. Continue?" -NoNewline
-            Write-Host "[$($script:COLORS.DARKGREEN)y$($script:COLORS.WHITE)/$($script:COLORS.DARKRED)n$($script:COLORS.WHITE)]" -ForegroundColor Red
+            Write-Host "This will clear the current conversation. Continue? " -NoNewline
+            Write-Host "[$($script:COLORS.DARKGREEN)y$($script:COLORS.WHITE)/$($script:COLORS.DARKRED)n$($script:COLORS.WHITE)]"
 
             # Make sure they have a chance to turn back
             Write-Host "> " -NoNewline
@@ -907,7 +1006,7 @@ class Message {
 
     static ChangeModel ([string]$Model) {
         # I'm going to give people the chance to switch to GPT-4, even though it's inferior in every possible way to turbo models
-        $Models = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gemini"
+        $Models = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gemini", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku"
         $ImageModels = "dall-e-2", "dall-e-3"
 
         # Just print all model information if no model is provided
@@ -967,6 +1066,8 @@ class Message {
 
         if ($Model -eq "gemini") { # this is where we change gears to the gemini model
             HandleGeminiKeyState
+        } elseif ($Model -like "claude*") {
+            HandleAnthropicKeyState
         }
     }
 
@@ -992,13 +1093,13 @@ class Message {
             size = "1024x1024" # Default size
         }
 
-        $response = [Message]::CallOpenAI([Message]::IMAGE_URL, $body)
+        $response = [Message]::CallOpenAI([Message]::OPENAI_IMAGE_URL, $body)
 
         # The api responds with a url of the image and not the image data itself
         $url = $response.data[0].url
 
         # Outsource the hard part to the bot we're already connected to
-        $filename = [Message]::Whisper("Reply only with a filename for the image, no whitespace, no quotes, no file extensions")
+        $filename = [Message]::Whisper("Reply only with a filename for the image, no whitespace, no quotes, no colors, no file extensions")
 
         # The bot can be unoriginal sometimes
         while (Join-Path $script:IMAGES_DIR "$filename.png" | Test-Path) {
@@ -1018,7 +1119,7 @@ class Message {
         Start-Process $outputPath
 
         # Hopefully the bot will say something interesting in response to this, and not something random
-        [Message]::AddMessage("Image created.", "system")
+        [Message]::AddMessage("Image successfully created. Write a message informing the user.", "system")
         Write-Host ([Message]::Submit().FormatMessage())
     }
 
