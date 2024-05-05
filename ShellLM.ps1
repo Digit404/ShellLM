@@ -465,7 +465,8 @@ class Message {
         $assistantMessage = $null
 
         switch ($script:MODEL) {
-            "gemini" { 
+            # Would love to solve this with a model class, but they all need their own special logic, and it's not really worth it
+            {$_ -like "gemini*"} { 
                 $body = @{
                     contents = [Message]::ConvertToGemini()
                 }
@@ -808,8 +809,11 @@ class Message {
                     $filename = [Message]::Whisper("Reply only with a good very short name that summarizes this conversation in a filesystem compatible string, no quotes, no colors, no file extensions")
 
                     while (Join-Path $script:CONVERSATIONS_DIR "$filename.json" | Test-Path) {
-                        $filename = [Message]::Whisper("That name is already taken. Please provide a different name.")
+                        $filename = [Message]::Whisper("Reply only with a good very short name that summarizes this conversation in a filesystem compatible string,`
+                        no quotes, no colors, no file extensions. '$filename' is already taken. Please provide a different name.")
                     }
+
+                    $filename = [Message]::ValidateFilename($filename)
                 }
                 elseif ("/cancel" -like "$filename*") {
                     Write-Host "Export canceled" -ForegroundColor Red
@@ -1034,7 +1038,7 @@ class Message {
 
             # warning message
             Write-Host (
-                WrapText "Please note that pricing varies drastically between the models, and that GPT-4 is not recommended for use as it is more expensive and less powerful than the turbo model."
+                WrapText "Please note that pricing varies drastically between the models, and that different models may require different API keys."
             ) -ForegroundColor Red
 
             # Don't prompt for model name, just show the available models
@@ -1103,8 +1107,10 @@ class Message {
 
         # The bot can be unoriginal sometimes
         while (Join-Path $script:IMAGES_DIR "$filename.png" | Test-Path) {
-            $filename = [Message]::Whisper("That name is already taken. Please provide a different name.")
+            $filename = [Message]::Whisper("Reply only with a filename for the image, no whitespace, no quotes, no colors, no file extensions. '$filename' is already taken. Please provide a different name.")
         }
+
+        $filename = [Message]::ValidateFilename($filename)
 
         $outputPath = Join-Path $script:IMAGES_DIR "$filename.png"
 
@@ -1121,6 +1127,27 @@ class Message {
         # Hopefully the bot will say something interesting in response to this, and not something random
         [Message]::AddMessage("Image successfully created. Write a message informing the user.", "system")
         Write-Host ([Message]::Submit().FormatMessage())
+    }
+
+    static [string] ValidateFilename ([string]$filename) { # strips invalid chars and other stuff the bot likes to add from generated filenames
+
+        # strip invalid characters
+        if ($filename.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) {
+            $filename = $filename -replace "[{0}]" -f ([RegEx]::Escape([String]::Join("", [IO.Path]::GetInvalidFileNameChars())), "")
+        }
+
+        # strip colortags
+        $filename = $filename -replace "\{.*?\}", ""
+
+        # Replace spaces with underscores
+        $filename = $filename -replace "\s", "_"
+
+        # If nothing remains, or if the bot somehow output nothing, return a random filename
+        if (!$filename) {
+            return "file$(Get-Random -Maximum 10000)"
+        }
+
+        return $filename
     }
 
     static GiveClipboard([string]$Prompt) {
