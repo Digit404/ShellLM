@@ -139,6 +139,10 @@ $IMAGES_DIR = Resolve-Path ($IMAGES_DIR)
 # Handle key state
 
 function HandleOpenAIKeyState { # Just to group it together, this is the only place it's used
+    if ($env:OPENAI_API_KEY -and $script:Key) {
+        return
+    }
+
     if (!$env:OPENAI_API_KEY -and !$script:Key) {
         Write-Host "OPEN AI API KEY NOT FOUND. GET ONE HERE: https://platform.openai.com/api-keys" -ForegroundColor Red
         Write-Host "Please input API key, or set it as an environment variable."
@@ -173,6 +177,10 @@ function HandleOpenAIKeyState { # Just to group it together, this is the only pl
 }
 
 function HandleGeminiKeyState { # This will only be called if the model is gemini
+    if ($env:GOOGLE_API_KEY -and $script:GeminiKey) {
+        return
+    }
+    
     if (!$env:GOOGLE_API_KEY -and !$script:GeminiKey) {
         Write-Host "GOOGLE API KEY NOT FOUND. GET ONE HERE: https://aistudio.google.com/app/apikey" -ForegroundColor Red
         Write-Host "Please input API key, or set it as an environment variable."
@@ -192,6 +200,10 @@ function HandleGeminiKeyState { # This will only be called if the model is gemin
 }
 
 function HandleAnthropicKeyState { # This will only be called if the model is claude-3
+    if ($env:ANTHROPIC_API_KEY -and $script:AnthropicKey) {
+        return
+    }
+    
     if (!$env:ANTHROPIC_API_KEY -and !$script:AnthropicKey) {
         Write-Host "ANTHROPIC API KEY NOT FOUND. GET ONE HERE: https://console.anthropic.com/settings/keys" -ForegroundColor Red
         Write-Host "Please input API key, or set it as an environment variable."
@@ -1553,7 +1565,7 @@ function DefineCommands {
     ) | Out-Null
 
     [Command]::new(
-        ("settings"), 
+        ("settings", "config"), 
         {[Config]::ChangeSettings()}, 
         "Change the persistent settings of the program"
     ) | Out-Null
