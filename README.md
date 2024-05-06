@@ -13,7 +13,7 @@ ShellLM is a feature-rich and flexible terminal application that allows users to
 - Conversation saving and loading to/from JSON files
 - Retry option to generate alternative responses
 - AskLLM mode for concise answers to specific questions
-- Supports `GPT-3.5-turbo`, `GPT-4`,` GPT-4-turbo`, `gemini-pro`, and the three `claude-3` models
+- Supports `GPT-3.5-turbo`, `GPT-4`, `GPT-4-turbo`, `gemini-pro`, and Claude-3's `opus`, `sonnet`, and `haiku` models
 - Image generation: Generate images using the DALL-E API (requires an OpenAI API key)
 - Custom instructions: Set specific guidelines for the model to follow during conversations
 - Automatically loads conversation 'autoload.json' on startup, automatically saves last conversation

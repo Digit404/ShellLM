@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    This script is a PowerShell implementation of a chatbot using OpenAI's GPT models, as well as Google's Gemini.
+    This script is a PowerShell implementation of a chatbot using OpenAI's GPT models, Google's Gemini, and Anthropic's Claude 3.
 
 .DESCRIPTION
     The script allows users to interact with the chatbot by sending messages and receiving responses from the LLM. It supports multiple commands and provides a conversational interface.
@@ -9,10 +9,10 @@
     Specifies the user's message/query to be sent to the chatbot.
 
 .PARAMETER Model
-    Specifies the GPT model to use for generating responses. The available options are "gpt-4-turbo", and "gpt-3.5-turbo". The default value is "gpt-3.5-turbo".
+    Specifies the large language model to use for generating responses.
 
 .PARAMETER ImageModel
-    Specifies the DALL-E model to use for generating images. The available options are "dall-e-2" and "dall-e-3". The default value is "dall-e-2".
+    Specifies the DALL-E model to use for generating images. The available options are "dall-e-2" and "dall-e-3". The default value is "dall-e-3".
 
 .PARAMETER Load
     Specifies a file containing a conversation to load. This can be used to continue a previous conversation.
@@ -26,6 +26,10 @@
 
 .PARAMETER GeminiKey
     Specifies the Google API key to use for making API calls to the Google Gemini endpoint.
+    If not provided, the script will prompt the user to enter the API key. It will also automatically set the API key as an environment variable.
+
+.PARAMETER AnthropicKey
+    Specifies the Anthropic API key to use for making API calls to the Anthropic Claude 3 endpoint.
     If not provided, the script will prompt the user to enter the API key. It will also automatically set the API key as an environment variable.
 
 .PARAMETER Clear
@@ -92,13 +96,16 @@ param (
     [string] $GeminiKey,
 
     [Parameter(Mandatory=$false)]
+    [string] $AnthropicKey,
+
+    [Parameter(Mandatory=$false)]
     [switch] $Clear,
 
     [Parameter(Mandatory=$false)]
-    [System.ConsoleColor] $AssistantColor = "DarkYellow",
+    [System.ConsoleColor] $AssistantColor,
 
     [Parameter(Mandatory=$false)]
-    [System.ConsoleColor] $UserColor = "Blue",
+    [System.ConsoleColor] $UserColor,
 
     [Parameter(Mandatory=$false)]
     [string]$ConfigFile = (Join-Path $PSScriptRoot "\config.json")
@@ -274,8 +281,6 @@ $COLORS = @{
     BRIGHTBLACK = "$ESC[37m"
 }
 
-$COLORS.RESET = $COLORS.$($AssistantColor.ToString())
-
 function WrapText {
     # Home grown stand in for python's textwrap (ansiwrap)
     param (
@@ -326,6 +331,205 @@ function WrapText {
     }
 
     return $wrappedText
+}
+
+class Config {
+    [string]$Name
+    $Value
+    [string]$Category
+    [string[]]$ValidateSet
+    [string]$DefaultValue
+
+    static [System.Collections.Generic.List[Config]] $Settings = @()
+
+    Config ([string]$Name, $Value) {
+        $this.Name = $Name
+        $this.Value = $Value
+        $this.DefaultValue = $Value
+        $this.Category = "Misc"
+
+        [Config]::Settings.Add($this)
+    }
+
+    Config ([string]$Name, $Value, [string]$Category, [string[]]$ValidateSet) {
+        $this.Name = $Name
+        $this.Value = $Value
+        $this.DefaultValue = $Value
+        $this.Category = $Category
+        $this.ValidateSet = $ValidateSet
+
+        [Config]::Settings.Add($this)
+    }
+
+    static [Config[]] Find ([string]$Name) {
+        $setting = [Config]::Settings | Where-Object { $_.Name -like "$Name*" }
+
+        if (!$setting) {
+            return $null
+        }
+
+        return $setting
+    }
+
+    static [string] Get ([string]$Name) {
+        $setting = [Config]::Find($Name)[0]
+
+        if ($setting) {
+            return $setting.Value
+        }
+
+        return $null
+    }
+
+    [bool] SetValue ([string]$NewValue) { # returns true if successful
+        if ($this.ValidateSet) {
+            foreach ($item in $this.ValidateSet) {
+                if ($item -like "$NewValue*") {
+                    $NewValue = $item
+                }
+            }
+
+            if ($NewValue -notin $this.ValidateSet) {
+                Write-Host (WrapText "Invalid value. Valid values are: $($this.ValidateSet -join ", ")") -ForegroundColor Red
+                return $false
+            }
+        }
+
+        $this.Value = $NewValue
+        return $true
+    }
+
+    static SetValue ([string]$Name, [string]$Value) {
+        $setting = [Config]::Find($Name)[0]
+
+        if ($setting) {
+            $setting.SetValue($Value)
+        } else {
+            [Config]::new($Name, $Value)
+        }
+    }
+
+    static ChangeSettings () {
+        while ($true) {
+            #Sort settings by category
+            $config = [Config]::Settings | Sort-Object Category
+
+            $currentCategory = ""
+
+            # Write out each setting in it's category
+            foreach ($setting in $config) {
+                if ($setting.Category -ne $currentCategory) {
+                    $currentCategory = $setting.Category
+                    Write-Host "`n  [$currentCategory]" -ForegroundColor DarkYellow
+                }
+
+                $index = $config.IndexOf($setting) + 1
+
+                Write-Host "    [$index]`t" -NoNewline
+                Write-Host "$($setting.Name): " -NoNewline -ForegroundColor DarkCyan
+                Write-Host "$($setting.Value)" -ForegroundColor Yellow
+
+                # back option
+                if ($index -eq $config.Count) {
+                    Write-Host "`n    [0]`tSave and go back" -ForegroundColor White
+                }
+            }
+
+            Write-Host "`nSelect a setting to change its value." -ForegroundColor DarkYellow
+            Write-Host "> " -NoNewline
+            $settingName = $global:Host.UI.ReadLine()
+
+            # check if it's a number
+            if ([int]::TryParse($settingName, [ref]$null)) {
+                if ([int]$settingName -eq 0) {
+                    break
+                }
+                Write-Host $config[[int]$settingName - 1].Name
+                $settingName = $config[[int]$settingName - 1].Name
+            }
+
+            # if the user wants to go back
+            if ($settingName -in "back", "quit", "exit", "cancel", "save") {
+                break
+            }
+
+            # Find the setting
+            $setting = [Config]::Find($settingName)
+
+            if (!$setting) {
+                Write-Host "`nSetting matching '$settingName' not found." -ForegroundColor Red
+                continue
+            }
+
+            # Find returns a list of settings, so we can show the user the error of their ways
+            if ($setting.Count -gt 1) {
+                Write-Host "Setting name ""$settingName"" is ambiguous.`n" -ForegroundColor Red
+                Write-Host "Matching settings:" -ForegroundColor DarkYellow
+                foreach ($setting in $setting) {
+                    Write-Host "   $($setting.Name)" -ForegroundColor Yellow
+                }
+                continue
+            }
+
+            # Powershell freaks out when you try to call the method of a list, even if it's one item
+            $setting = $setting[0]
+
+            # Show the current value and prompt for a new one
+            Write-Host "`n[$($setting.Name)] Current value: " -ForegroundColor DarkYellow -NoNewline
+            Write-Host "$($setting.Value)" -ForegroundColor Yellow
+
+            # Show the valid values if they exist
+            if ($setting.ValidateSet) {
+                Write-Host "`nValid values:" -ForegroundColor DarkYellow
+
+                foreach ($value in $setting.ValidateSet) {
+                    $index = $setting.ValidateSet.IndexOf($value) + 1
+                    # change color if selected
+                    $color = if ($value -eq $setting.value) { "Green" } else { "DarkYellow" }
+                    Write-Host "  [$index]`t$value" -ForegroundColor $color
+                }
+            }
+
+            Write-Host "`nNew value:" -ForegroundColor Blue
+            Write-Host "> " -NoNewline -ForegroundColor Blue
+
+            [string]$newValue = $global:Host.UI.ReadLine()
+            
+            # check if it's a number
+            if ([int]::TryParse($newValue, [ref]$null)) {
+                $newValue = $setting.ValidateSet[[int]$newValue - 1]
+            }
+
+            if ($setting.SetValue($newValue)) {
+                Write-Host "`nSetting changed." -ForegroundColor Green
+            }
+        }
+
+        [Config]::WriteConfig()
+        Write-Host "`nSettings saved.`n" -ForegroundColor Green
+    }
+
+    static WriteConfig () {
+        $config = [System.Collections.Hashtable]::new()
+
+        foreach ($setting in [Config]::Settings) {
+            if ($setting.Value -ne $setting.DefaultValue) {
+                $config[$setting.Name] = $setting.Value
+            }
+        }
+
+        $config | ConvertTo-Json | Set-Content -Path $script:ConfigFile
+    }
+
+    static ReadConfig () {
+        if (Test-Path $script:ConfigFile) {
+            $config = Get-Content -Path $script:ConfigFile | ConvertFrom-Json
+
+            foreach ($setting in $config.PSObject.Properties) {
+                [Config]::SetValue($setting.Name, $setting.Value)
+            }
+        }
+    }
 }
 
 class Command {
@@ -1305,197 +1509,6 @@ class Message {
     }
 }
 
-class Config {
-    [string]$Name
-    $Value
-    [string]$Category
-    [array]$ValidateSet
-    [string]$DefaultValue
-
-    static [System.Collections.Generic.List[Config]] $Settings = @()
-
-    Config ([string]$Name, $Value) {
-        $this.Name = $Name
-        $this.Value = $Value
-        $this.DefaultValue = $Value
-        $this.Category = "Misc"
-
-        [Config]::Settings.Add($this)
-    }
-
-    Config ([string]$Name, $Value, [string]$Category, [array]$ValidateSet) {
-        $this.Name = $Name
-        $this.Value = $Value
-        $this.DefaultValue = $Value
-        $this.Category = $Category
-        $this.ValidateSet = $ValidateSet
-
-        [Config]::Settings.Add($this)
-    }
-
-    static [Config[]] Find ([string]$Name) {
-        $setting = [Config]::Settings | Where-Object { $_.Name -like "$Name*" }
-
-        if (!$setting) {
-            return $null
-        }
-
-        return $setting
-    }
-
-    static [string] Get ([string]$Name) {
-        $setting = [Config]::Find($Name)[0]
-
-        if ($setting) {
-            return $setting.Value
-        }
-
-        return $null
-    }
-
-    [bool] SetValue ([string]$Value) { # returns true if successful
-        if ($this.ValidateSet -and $Value -notin $this.ValidateSet) {
-            Write-Host (WrapText "Invalid value. Valid values are: $($this.ValidateSet -join ", ")") -ForegroundColor Red
-            return $false
-        }
-
-        $this.Value = $Value
-        return $true
-    }
-
-    static SetValue ([string]$Name, [string]$Value) {
-        $setting = [Config]::Find($Name)[0]
-
-        if ($setting) {
-            $setting.SetValue($Value)
-        } else {
-            [Config]::new($Name, $Value)
-        }
-    }
-
-    static ChangeSettings () {
-        while ($true) {
-            #Sort settings by category
-            $config = [Config]::Settings | Sort-Object Category
-
-            $currentCategory = ""
-
-            # Write out each setting in it's category
-            foreach ($setting in $config) {
-                if ($setting.Category -ne $currentCategory) {
-                    $currentCategory = $setting.Category
-                    Write-Host "`n  [$currentCategory]" -ForegroundColor DarkYellow
-                }
-
-                $index = $config.IndexOf($setting) + 1
-
-                Write-Host "    [$index]`t" -NoNewline
-                Write-Host "$($setting.Name): " -NoNewline -ForegroundColor DarkCyan
-                Write-Host "$($setting.Value)" -ForegroundColor Yellow
-
-                # back option
-                if ($index -eq $config.Count) {
-                    Write-Host "`n    [$($index + 1)]`tSave and go back" -ForegroundColor White
-                }
-            }
-
-            Write-Host "`nSelect a setting to change its value." -ForegroundColor DarkYellow
-            Write-Host "> " -NoNewline
-            $settingName = $global:Host.UI.ReadLine()
-
-            # check if it's a number
-            if ([int]::TryParse($settingName, [ref]$null)) {
-                if ([int]$settingName -gt $config.Count) {
-                    break
-                }
-                Write-Host $config[[int]$settingName - 1].Name
-                $settingName = $config[[int]$settingName - 1].Name
-            }
-
-            # if the user wants to go back
-            if ($settingName -in "back", "quit", "exit", "cancel", "save") {
-                break
-            }
-
-            # Find the setting
-            $setting = [Config]::Find($settingName)
-
-            if (!$setting) {
-                Write-Host "`nSetting matching '$settingName' not found." -ForegroundColor Red
-                continue
-            }
-
-            # Find returns a list of settings, so we can show the user the error of their ways
-            if ($setting.Count -gt 1) {
-                Write-Host "Setting name ""$settingName"" is ambiguous.`n" -ForegroundColor Red
-                Write-Host "Matching settings:" -ForegroundColor DarkYellow
-                foreach ($setting in $setting) {
-                    Write-Host "   $($setting.Name)" -ForegroundColor Yellow
-                }
-                continue
-            }
-
-            # Powershell freaks out when you try to call the method of a list, even if it's one item
-            $setting = $setting[0]
-
-            # Show the current value and prompt for a new one
-            Write-Host "`n[$($setting.Name)] Current value: " -ForegroundColor DarkYellow -NoNewline
-            Write-Host "$($setting.Value)" -ForegroundColor Yellow
-
-            # Show the valid values if they exist
-            if ($setting.ValidateSet) {
-                Write-Host "`nValid values:" -ForegroundColor DarkYellow
-
-                foreach ($value in $setting.ValidateSet) {
-                    $index = $setting.ValidateSet.IndexOf($value) + 1
-                    # change color if selected
-                    $color = if ($value -eq $setting.value) { "Green" } else { "DarkYellow" }
-                    Write-Host "  [$index]`t$value" -ForegroundColor $color
-                }
-            }
-
-            Write-Host "`nNew value:" -ForegroundColor Blue
-            Write-Host "> " -NoNewline -ForegroundColor Blue
-
-            [string]$newValue = $global:Host.UI.ReadLine()
-            
-            # check if it's a number
-            if ([int]::TryParse($newValue, [ref]$null)) {
-                $newValue = $setting.ValidateSet[[int]$newValue - 1]
-            }
-
-            if ($setting.SetValue($newValue)) {
-                Write-Host "`nSetting changed." -ForegroundColor Green
-            }
-        }
-
-        [Config]::WriteConfig()
-        Write-Host "`nSettings saved.`n" -ForegroundColor Green
-    }
-
-    static WriteConfig () {
-        $config = [System.Collections.Hashtable]::new()
-
-        foreach ($setting in [Config]::Settings) {
-            if ($setting.Value -ne $setting.DefaultValue) {
-                $config[$setting.Name] = $setting.Value
-            }
-        }
-
-        $config | ConvertTo-Json | Set-Content -Path $script:ConfigFile
-    }
-
-    static ReadConfig () {
-        if (Test-Path $script:ConfigFile) {
-            $config = Get-Content -Path $script:ConfigFile | ConvertFrom-Json
-
-            foreach ($setting in $config.PSObject.Properties) {
-                [Config]::SetValue($setting.Name, $setting.Value)
-            }
-        }
-    }
-}
-
 function DefineCommands {
     # The first command is the one shown to the user
     [Command]::Commands.Clear()
@@ -1622,24 +1635,37 @@ function DefineSettings {
     [Config]::new("ImageSize", "1024x1024", "Image", @("1024x1024", "1792x1024", "1024x1792")) | Out-Null
     [Config]::new("ImageStyle", "vivid", "Image", @("vivid", "natural")) | Out-Null
     [Config]::new("ImageQuality", "standard", "Image", @("standard", "hd")) | Out-Null
+    [Config]::new("AssistantColor", "DarkYellow", "Chat", [System.ConsoleColor]::GetValues([System.ConsoleColor])) | Out-Null
+    [Config]::new("UserColor", "Blue", "Chat", [System.ConsoleColor]::GetValues([System.ConsoleColor])) | Out-Null
+
+    # Asign the global values from the config file
+    if (!$script:Model) {
+        $script:Model = [Config]::Get("DefaultModel")
+    }
+    
+    if (!$script:ImageModel) {
+        $script:ImageModel = [Config]::Get("ImageModel")
+    }
+    
+    if (!$script:UserColor) {
+        $script:UserColor = [Config]::Get("UserColor")
+    }
+    
+    if (!$script:AssistantColor) {
+        $script:AssistantColor = [Config]::Get("AssistantColor")
+    }
 
     # After init, immediately load the config file
     [Config]::ReadConfig()
 }
 
+DefineSettings
+
 [Message]::Reset()
 
 DefineCommands
 
-DefineSettings
-
-if (!$Model) {
-    $Model = [Config]::Get("DefaultModel")
-}
-
-if (!$ImageModel) {
-    $ImageModel = [Config]::Get("ImageModel")
-}
+$COLORS.RESET = $COLORS.$($AssistantColor.ToString())
 
 if ($Model -eq "gemini") {
     HandleGeminiKeyState
