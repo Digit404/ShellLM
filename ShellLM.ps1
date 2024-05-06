@@ -817,7 +817,13 @@ class Message {
 
                     $filename = [Message]::Whisper("Reply only with a good very short name that summarizes this conversation in a filesystem compatible string, no quotes, no colors, no file extensions")
 
+                    $failed = 0
+
                     while (Join-Path $script:CONVERSATIONS_DIR "$filename.json" | Test-Path) {
+                        if ($failed -gt 5) {
+                            $filename = "UnnamedConversation$(Get-Random -Maximum 10000)"
+                        }
+                        $failed++
                         $filename = [Message]::Whisper("Reply only with a good very short name that summarizes this conversation in a filesystem compatible string,`
                         no quotes, no colors, no file extensions. '$filename' is already taken. Please provide a different name.")
                     }
@@ -1116,8 +1122,16 @@ class Message {
         # Outsource the hard part to the bot we're already connected to
         $filename = [Message]::Whisper("Reply only with a filename for the image, no whitespace, no quotes, no colors, no file extensions")
 
+        $failed = 0
+
         # The bot can be unoriginal sometimes
         while (Join-Path $script:IMAGES_DIR "$filename.png" | Test-Path) {
+            if ($failed -gt 5) {
+                $filename = "UnnamedImage$(Get-Random -Maximum 10000)"
+            }
+
+            $failed++
+            
             $filename = [Message]::Whisper("Reply only with a filename for the image, no whitespace, no quotes, no colors, no file extensions. '$filename' is already taken. Please provide a different name.")
         }
 
