@@ -32,7 +32,7 @@
     Clears the AskLLM context, including the last query and response.
 
 .NOTES
-    Version 2.5
+    Version 2.6
     - This script requires an OpenAI API key to make API calls to the OpenAI chat/completions endpoint.
     - The script uses ANSI escape codes for color formatting in the terminal.
     - The script supports various commands that can be used to interact with the chatbot.
@@ -64,14 +64,14 @@ param (
         "claude-3-sonnet", 
         "claude-3-haiku"
     )]
-    [string] $Model = "gpt-3.5-turbo", # gpt-4 is too expensive to be default
+    [string] $Model,
 
     [Parameter(Mandatory=$false)]
     [ValidateSet(
         "dall-e-2",
         "dall-e-3"
     )]
-    [string] $ImageModel = "dall-e-3", # Nobody wants to use dall-e-2
+    [string] $ImageModel,
 
     [Parameter(ValueFromRemainingArguments)]
     [string] $Query,
@@ -98,8 +98,14 @@ param (
     [System.ConsoleColor] $AssistantColor = "DarkYellow",
 
     [Parameter(Mandatory=$false)]
-    [System.ConsoleColor] $UserColor = "Blue"
+    [System.ConsoleColor] $UserColor = "Blue",
+
+    [Parameter(Mandatory=$false)]
+    [string]$ConfigFile = (Join-Path $PSScriptRoot "\config.json")
 )
+
+$MODELS = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gemini", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku"
+$IMAGE_MODELS = "dall-e-2", "dall-e-3"
 
 $ESC = [char]27 # Escape char for colors
 
@@ -203,12 +209,6 @@ function HandleAnthropicKeyState { # This will only be called if the model is cl
 }
 
 HandleOpenAIKeyState
-
-if ($Model -eq "gemini") {
-    HandleGeminiKeyState
-} elseif ($Model -like "claude*") {
-    HandleAnthropicKeyState
-}
 
 # the turbo models are better than the base models and are less expensive
 if ($model -eq "gpt-3" -or $model -eq "gpt-3.5") {
@@ -325,7 +325,7 @@ class Command {
 
     # I don't think argsNum is doing anything anymore, but I'm afraid to remove it...
 
-    static [System.Collections.ArrayList]$Commands = @()
+    static [System.Collections.Generic.List[Command]] $Commands = @()
 
     Command([string[]]$Keywords, [scriptblock]$Action, [string]$Description, [int]$ArgsNum, [string]$Usage) {
         $this.Keywords = $Keywords;
@@ -433,7 +433,7 @@ class Message {
     static [string] $OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations"
     static [string] $ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
-    static [System.Collections.ArrayList]$Messages = @()
+    static [System.Collections.Generic.List[Message]] $Messages = @()
 
     Message([string]$content, [string]$role) {
         $this.content = $content
@@ -577,8 +577,6 @@ class Message {
         try {
             $bodyJSON = $body | ConvertTo-Json -Depth 8 -Compress
 
-            Write-Debug $bodyJSON
-
             # Claude is extremely picky about it's header, needs version
             $response = Invoke-WebRequest `
                 -Uri $url `
@@ -589,8 +587,6 @@ class Message {
                     "Content-Type" = "application/json"
                 } `
                 -Body $bodyJSON | ConvertFrom-Json
-
-            Write-Debug ($response | ConvertTo-Json -Depth 8)
 
             return $response
         } catch {
@@ -730,6 +726,7 @@ class Message {
         if (!($this.role -eq "system")) {
             foreach ($Item in $script:COLORS.GetEnumerator()) {
                 $messageContent = $messageContent -replace "{$($Item.Key)}", $Item.Value
+                $messageContent = $messageContent -replace "{/$($Item.Key)}", $script:COLORS.RESET # Sometimes the bots do this, but it's not inteded
             }
         }
 
@@ -1010,8 +1007,8 @@ class Message {
 
     static ChangeModel ([string]$Model) {
         # I'm going to give people the chance to switch to GPT-4, even though it's inferior in every possible way to turbo models
-        $Models = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gemini", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku"
-        $ImageModels = "dall-e-2", "dall-e-3"
+        $Models = $script:MODELS
+        $ImageModels = $script:IMAGE_MODELS
 
         # Just print all model information if no model is provided
         if (!$Model) {
@@ -1094,7 +1091,9 @@ class Message {
             model = $script:ImageModel; 
             prompt = $prompt;
             n = 1;
-            size = "1024x1024" # Default size
+            quality = [Config]::Get("ImageQuality");
+            size = [Config]::Get("ImageSize");
+            style = [Config]::Get("ImageStyle");
         }
 
         $response = [Message]::CallOpenAI([Message]::OPENAI_IMAGE_URL, $body)
@@ -1257,6 +1256,191 @@ class Message {
     }
 }
 
+class Config {
+    [string]$Name
+    $Value
+    [string]$Category
+    [array]$ValidateSet
+
+    static [System.Collections.Generic.List[Config]] $Settings = @()
+
+    Config ([string]$Name, $Value) {
+        $this.Name = $Name
+        $this.Value = $Value
+
+        [Config]::Settings.Add($this)
+    }
+
+    Config ([string]$Name, $Value, [string]$Category, [array]$ValidateSet) {
+        $this.Name = $Name
+        $this.Value = $Value
+        $this.Category = $Category
+        $this.ValidateSet = $ValidateSet
+
+        [Config]::Settings.Add($this)
+    }
+
+    static [Config[]] Find ([string]$Name) {
+        $setting = [Config]::Settings | Where-Object { $_.Name -like "$Name*" }
+
+        if (!$setting) {
+            return $null
+        }
+
+        return $setting
+    }
+
+    static [string] Get ([string]$Name) {
+        $setting = [Config]::Find($Name)[0]
+
+        if ($setting) {
+            return $setting.Value
+        }
+
+        return $null
+    }
+
+    [bool] SetValue ([string]$Value) { # returns true if successful
+        if ($this.ValidateSet -and $Value -notin $this.ValidateSet) {
+            Write-Host (WrapText "Invalid value. Valid values are: $($this.ValidateSet -join ", ")") -ForegroundColor Red
+            return $false
+        }
+
+        $this.Value = $Value
+        return $true
+    }
+
+    static SetValue ([string]$Name, [string]$Value) {
+        $setting = [Config]::Find($Name)[0]
+
+        if ($setting) {
+            $setting.SetValue($Value)
+        } else {
+            [Config]::new($Name, $Value)
+        }
+    }
+
+    static ChangeSettings () {
+        while ($true) {
+            #Sort settings by category
+            $config = [Config]::Settings | Sort-Object Category
+
+            $currentCategory = ""
+
+            # Write out each setting in it's category
+            foreach ($setting in $config) {
+                if ($setting.Category -ne $currentCategory) {
+                    $currentCategory = $setting.Category
+                    Write-Host "`n  [$currentCategory]" -ForegroundColor DarkYellow
+                }
+
+                $index = $config.IndexOf($setting) + 1
+
+                Write-Host "    [$index]`t" -NoNewline
+                Write-Host "$($setting.Name): " -NoNewline -ForegroundColor DarkCyan
+                Write-Host "$($setting.Value)" -ForegroundColor Yellow
+
+                # back option
+                if ($index -eq $config.Count) {
+                    Write-Host "`n    [$($index + 1)]`tSave and go back" -ForegroundColor White
+                }
+            }
+
+            Write-Host "`nSelect a setting to change its value." -ForegroundColor DarkYellow
+            Write-Host "> " -NoNewline
+            $settingName = $global:Host.UI.ReadLine()
+
+            # check if it's a number
+            if ([int]::TryParse($settingName, [ref]$null)) {
+                if ([int]$settingName -gt $config.Count) {
+                    break
+                }
+                Write-Host $config[[int]$settingName - 1].Name
+                $settingName = $config[[int]$settingName - 1].Name
+            }
+
+            # if the user wants to go back
+            if ($settingName -in "back", "quit", "exit", "cancel", "save") {
+                break
+            }
+
+            # Find the setting
+            $setting = [Config]::Find($settingName)
+
+            if (!$setting) {
+                Write-Host "`nSetting matching '$settingName' not found." -ForegroundColor Red
+                continue
+            }
+
+            # Find returns a list of settings, so we can show the user the error of their ways
+            if ($setting.Count -gt 1) {
+                Write-Host "Setting name ""$settingName"" is ambiguous.`n" -ForegroundColor Red
+                Write-Host "Matching settings:" -ForegroundColor DarkYellow
+                foreach ($setting in $setting) {
+                    Write-Host "   $($setting.Name)" -ForegroundColor Yellow
+                }
+                continue
+            }
+
+            # Powershell freaks out when you try to call the method of a list, even if it's one item
+            $setting = $setting[0]
+
+            # Show the current value and prompt for a new one
+            Write-Host "`n[$($setting.Name)] Current value: " -ForegroundColor DarkYellow -NoNewline
+            Write-Host "$($setting.Value)" -ForegroundColor Yellow
+
+            # Show the valid values if they exist
+            if ($setting.ValidateSet) {
+                Write-Host "`nValid values:" -ForegroundColor DarkYellow
+
+                foreach ($value in $setting.ValidateSet) {
+                    $index = $setting.ValidateSet.IndexOf($value) + 1
+                    # change color if selected
+                    $color = if ($value -eq $setting.value) { "Green" } else { "DarkYellow" }
+                    Write-Host "  [$index]`t$value" -ForegroundColor $color
+                }
+            }
+
+            Write-Host "`nNew value:" -ForegroundColor Blue
+            Write-Host "> " -NoNewline -ForegroundColor Blue
+
+            [string]$newValue = $global:Host.UI.ReadLine()
+            
+            # check if it's a number
+            if ([int]::TryParse($newValue, [ref]$null)) {
+                $newValue = $setting.ValidateSet[[int]$newValue - 1]
+            }
+
+            if ($setting.SetValue($newValue)) {
+                Write-Host "`nSetting changed." -ForegroundColor Green
+            }
+        }
+
+        [Config]::WriteConfig()
+        Write-Host "`nSettings saved.`n" -ForegroundColor Green
+    }
+
+    static WriteConfig () {
+        $config = [System.Collections.Hashtable]::new()
+
+        foreach ($setting in [Config]::Settings) {
+            $config[$setting.Name] = $setting.Value
+        }
+
+        $config | ConvertTo-Json | Set-Content -Path $script:ConfigFile
+    }
+
+    static ReadConfig () {
+        if (Test-Path $script:ConfigFile) {
+            $config = Get-Content -Path $script:ConfigFile | ConvertFrom-Json
+
+            foreach ($setting in $config.PSObject.Properties) {
+                [Config]::SetValue($setting.Name, $setting.Value)
+            }
+        }
+    }
+}
+
 function DefineCommands {
     # The first command is the one shown to the user
     [Command]::Commands.Clear()
@@ -1367,11 +1551,46 @@ function DefineCommands {
         "Set custom instructions the model has to follow for the conversation", 
         -1, "[instructions]"
     ) | Out-Null
+
+    [Command]::new(
+        ("settings"), 
+        {[Config]::ChangeSettings()}, 
+        "Change the persistent settings of the program"
+    ) | Out-Null
+}
+
+function DefineSettings {
+    [Config]::Settings.Clear()
+
+    [Config]::new("DefaultModel", "gpt-3.5-turbo", "Chat", $script:MODELS) | Out-Null # gpt-4 is too expensive to be default
+    [Config]::new("ImageModel", "dall-e-3", "Image", $script:IMAGE_MODELS) | Out-Null # Nobody wants to use dall-e-2
+    [Config]::new("ImageSize", "1024x1024", "Image", @("1024x1024", "1792x1024", "1024x1792")) | Out-Null
+    [Config]::new("ImageStyle", "vivid", "Image", @("vivid", "natural")) | Out-Null
+    [Config]::new("ImageQuality", "standard", "Image", @("standard", "hd")) | Out-Null
+
+    # After init, immediately load the config file
+    [Config]::ReadConfig()
 }
 
 [Message]::Reset()
 
 DefineCommands
+
+DefineSettings
+
+if (!$Model) {
+    $Model = [Config]::Get("DefaultModel")
+}
+
+if (!$ImageModel) {
+    $ImageModel = [Config]::Get("ImageModel")
+}
+
+if ($Model -eq "gemini") {
+    HandleGeminiKeyState
+} elseif ($Model -like "claude*") {
+    HandleAnthropicKeyState
+}
 
 # AskLLM mode, include the question in the command and it will try to answer as briefly as it can
 if ($Query) {
