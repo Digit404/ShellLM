@@ -649,6 +649,8 @@ class Message {
     static [string] $OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations"
     static [string] $ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
+    static [string] $IMAGE_PROMPT = "Create a detailed image generation prompt for DALL-E based on the following request, include nothing other than the description in plain text: "
+
     static [System.Collections.Generic.List[Message]] $Messages = @()
 
     Message([string]$content, [string]$role) {
@@ -1325,8 +1327,7 @@ class Message {
         }
 
         # Image generation meta prompt
-        $Message = "Create a detailed image generation prompt for DALL-E based on the following request, include nothing other than the description in plain text: $Prompt"
-        [Message]::AddMessage($Message, "system")
+        [Message]::AddMessage([Message]::IMAGE_PROMPT + $Prompt, "system")
 
         $prompt = [Message]::Submit().content
 
@@ -1377,8 +1378,8 @@ class Message {
         Start-Process $outputPath
 
         # Hopefully the bot will say something interesting in response to this, and not something random
-        [Message]::AddMessage("Image successfully created. Write a message informing the user.", "system")
-        Write-Host ([Message]::Submit().FormatMessage())
+        $message = [Message]::Whisper("Image successfully created and saved to the user's computer in the .\images\ folder. Write a message informing the user.")
+        Write-Host (WrapText $message) -ForegroundColor $script:AssistantColor
     }
 
     static [string] ValidateFilename ([string]$filename) { # strips invalid chars and other stuff the bot likes to add from generated filenames
@@ -1470,7 +1471,7 @@ class Message {
     }
 
     static ChangeInstructions ([string]$Instructions) {
-        $currentInstructions = if ([Message]::Messages[1].role -eq "system") {
+        $currentInstructions = if ([Message]::Messages[1].role -eq "system" -and [Message]::Messages[1].content -notlike "$([Message]::IMAGE_PROMPT)*") {
             [Message]::Messages[1].content
         } else {
             ""
