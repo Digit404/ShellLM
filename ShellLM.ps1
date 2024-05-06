@@ -32,7 +32,7 @@
     Clears the AskLLM context, including the last query and response.
 
 .NOTES
-    Version 2.6
+    Version 2.7
     - This script requires an OpenAI API key to make API calls to the OpenAI chat/completions endpoint.
     - The script uses ANSI escape codes for color formatting in the terminal.
     - The script supports various commands that can be used to interact with the chatbot.
@@ -474,7 +474,7 @@ class Message {
         # Print thinking message
         Write-Host "Thinking...`r" -NoNewline
 
-        $assistantMessage = $null
+        $responseMessage = $null
 
         switch ($script:MODEL) {
             # Would love to solve this with a model class, but they all need their own special logic, and it's not really worth it
@@ -488,9 +488,31 @@ class Message {
                 if (!$response) {
                     return $null
                 }
-        
+
+                Write-Debug ($response | ConvertTo-Json -Depth 8)
+
+                $finishReason = $response.candidates[0].finishReason
+
+                # Gemini does't provide a response message if the finish reason is SAFETY
+                if ($finishReason -eq "SAFETY") {
+                    Write-Host "Content blocked by Gemini's safety filter." -ForegroundColor Red
+                    [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+                    return $null
+                }
+
+                # Generic error for if there is no response content
+                if (!$response.candidates?[0].content.parts?[0].text) {
+                    Write-Host "There was an error processing the response." -ForegroundColor Red
+                    [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+                    return $null
+                } 
+
                 $responseMessage = $response.candidates[0].content.parts[0].text
-                $assistantMessage = [Message]::AddMessage($responseMessage, "assistant")
+
+                # I think this is referring to output tokens so the conversation can technically still continue
+                if ($finishReason -eq "MAX_TOKENS") {
+                    $responseMessage += "`n`n{RED}Token limit reached."
+                }
             }
             {$_ -like "claude*"} {
                 $Model = switch ($script:MODEL) {
@@ -512,7 +534,6 @@ class Message {
                 }
         
                 $responseMessage = $response.content[-1].text
-                $assistantMessage = [Message]::AddMessage($responseMessage, "assistant")
             }
             default {
                 $body = @{
@@ -525,10 +546,12 @@ class Message {
                 if (!$response) {
                     return $null
                 }
-        
-                $assistantMessage = [Message]::AddMessage($response.choices[0].message.content, $response.choices[0].message.role)
+
+                $responseMessage = $response.choices[0].message.content
             }
         }
+
+        $assistantMessage = [Message]::AddMessage($responseMessage, "assistant")
 
         # Clear the thinking message on the event that the message is very short.
         Write-Host "              `r" -NoNewline
@@ -1287,12 +1310,15 @@ class Config {
     $Value
     [string]$Category
     [array]$ValidateSet
+    [string]$DefaultValue
 
     static [System.Collections.Generic.List[Config]] $Settings = @()
 
     Config ([string]$Name, $Value) {
         $this.Name = $Name
         $this.Value = $Value
+        $this.DefaultValue = $Value
+        $this.Category = "Misc"
 
         [Config]::Settings.Add($this)
     }
@@ -1300,6 +1326,7 @@ class Config {
     Config ([string]$Name, $Value, [string]$Category, [array]$ValidateSet) {
         $this.Name = $Name
         $this.Value = $Value
+        $this.DefaultValue = $Value
         $this.Category = $Category
         $this.ValidateSet = $ValidateSet
 
@@ -1450,7 +1477,9 @@ class Config {
         $config = [System.Collections.Hashtable]::new()
 
         foreach ($setting in [Config]::Settings) {
-            $config[$setting.Name] = $setting.Value
+            if ($setting.Value -ne $setting.DefaultValue) {
+                $config[$setting.Name] = $setting.Value
+            }
         }
 
         $config | ConvertTo-Json | Set-Content -Path $script:ConfigFile
@@ -1675,7 +1704,12 @@ try {
                 continue
             }
 
-            Write-Host ([Message]::Query($prompt).FormatMessage())
+            # Simply `[Message]::Query($prompt)?.FormatMessage()` (with the conditional chaining operator) runs it twice for some reason
+            $response = [Message]::Query($prompt)
+
+            if ($response) {
+                Write-Host ($response.FormatMessage())
+            }
         }
     }
 } finally {
