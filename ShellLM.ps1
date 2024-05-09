@@ -1639,6 +1639,9 @@ function DefineSettings {
     [Config]::new("AssistantColor", "DarkYellow", "Chat", [System.ConsoleColor]::GetValues([System.ConsoleColor])) | Out-Null
     [Config]::new("UserColor", "Blue", "Chat", [System.ConsoleColor]::GetValues([System.ConsoleColor])) | Out-Null
 
+    # After init, immediately load the config file
+    [Config]::ReadConfig()
+
     # Asign the global values from the config file
     if (!$script:Model) {
         $script:Model = [Config]::Get("DefaultModel")
@@ -1655,9 +1658,6 @@ function DefineSettings {
     if (!$script:AssistantColor) {
         $script:AssistantColor = [Config]::Get("AssistantColor")
     }
-
-    # After init, immediately load the config file
-    [Config]::ReadConfig()
 }
 
 DefineSettings
