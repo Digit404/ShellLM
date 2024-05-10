@@ -330,42 +330,50 @@ class Config {
     [int]$ValidateMax
     [int]$ValidateMin
 
-    [string]$DefaultValue
+    $DefaultValue
 
     static [System.Collections.Generic.List[Config]] $Settings = @()
 
     Config ([string]$Name, $Value) {
         $this.Name = $Name
+
         $this.Value = $Value
         $this.DefaultValue = $Value
+
         $this.Category = "Misc"
 
         [Config]::Settings.Add($this)
     }
 
-    Config ([string]$Name, $Value, [string]$Category) {
+    Config ([string]$Name, [bool]$Value, [string]$Category) {
         $this.Name = $Name
-        $this.Value = $Value
-        $this.DefaultValue = $Value
+
+        [bool]$this.Value = $Value
+        [bool]$this.DefaultValue = $Value
+
         $this.Category = $Category
 
         [Config]::Settings.Add($this)
     }
 
-    Config ([string]$Name, $Value, [string]$Category, [string[]]$ValidateSet) {
+    Config ([string]$Name, [string]$Value, [string]$Category, [string[]]$ValidateSet) {
         $this.Name = $Name
-        $this.Value = $Value
-        $this.DefaultValue = $Value
+
+        [string]$this.Value = $Value
+        [string]$this.DefaultValue = $Value
+
         $this.Category = $Category
         $this.ValidateSet = $ValidateSet
 
         [Config]::Settings.Add($this)
     }
 
-    Config ([string]$Name, $Value, [string]$Category, [int]$ValidateMin, [int]$ValidateMax) {
+    Config ([string]$Name, [double]$Value, [string]$Category, [int]$ValidateMin, [int]$ValidateMax) {
         $this.Name = $Name
-        $this.Value = $Value
-        $this.DefaultValue = $Value
+        
+        [double]$this.Value = $Value
+        [double]$this.DefaultValue = $Value
+
         $this.Category = $Category
 
         $this.ValidateMax = $ValidateMax
@@ -384,7 +392,7 @@ class Config {
         return $setting
     }
 
-    static [string] Get ([string]$Name) {
+    static [object] Get ([string]$Name) {
         $setting = [Config]::Find($Name)[0]
 
         if ($setting) {
@@ -394,7 +402,7 @@ class Config {
         return $null
     }
 
-    [bool] SetValue ([string]$NewValue) { # returns true if successful
+    [bool] SetValue ($NewValue) { # returns true if successful
         if ($this.ValidateSet) {
             foreach ($item in $this.ValidateSet) {
                 if ($item -like "$NewValue*") {
@@ -421,14 +429,15 @@ class Config {
         }
         else {
             # Boolean values are a special case
-            $NewValue = "true" -like "$NewValue*" -or $NewValue -eq 1
+            [bool]$NewValue = ("true" -like "$NewValue*" -or $NewValue -eq 1)
+            Write-Debug $NewValue.GetType().Name
         }
 
         $this.Value = $NewValue
         return $true
     }
 
-    static SetValue ([string]$Name, [string]$Value) {
+    static SetValue ([string]$Name, $Value) {
         $setting = [Config]::Find($Name)[0]
 
         if ($setting) {
@@ -497,7 +506,6 @@ class Config {
                 Write-Host "`nSetting matching '$settingName' not found." -ForegroundColor Red
                 continue
             }
-            
 
             # Find returns a list of settings, so we can show the user the error of their ways
             if ($setting.Count -gt 1) {
@@ -511,6 +519,12 @@ class Config {
 
             # Powershell freaks out when you try to call the method of a list, even if it's one item
             $setting = $setting[0]
+
+            if ($setting.Value -is [bool]) {
+                $setting.SetValue((!$setting.Value))
+                Write-Host "`nSetting changed." -ForegroundColor Green
+                continue
+            }
 
             # Show the current value and prompt for a new one
             Write-Host "`n[$($setting.Name)] Current value: " -ForegroundColor DarkYellow -NoNewline
