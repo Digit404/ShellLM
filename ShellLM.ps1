@@ -242,6 +242,21 @@ function HandleModelState { # the turbo models are better than the base models a
     if ($script:Model -eq "claude-3") {
         $script:Model = "claude-3-sonnet"
     }
+
+    # Asign the global values from the config file
+    if (!$script:Model) {
+        $script:Model = [Config]::Get("DefaultModel")
+    }
+    
+    if (!$script:ImageModel) {
+        $script:ImageModel = [Config]::Get("ImageModel")
+    }
+
+    if ($script:Model -eq "gemini") {
+        HandleGeminiKeyState
+    } elseif ($script:Model -like "claude*") {
+        HandleAnthropicKeyState
+    }
 }
 
 $SYSTEM_MESSAGE = (
@@ -1830,21 +1845,6 @@ function DefineSettings {
     [Config]::ReadConfig()
 
     HandleModelState
-
-    # Asign the global values from the config file
-    if (!$script:Model) {
-        $script:Model = [Config]::Get("DefaultModel")
-    }
-    
-    if (!$script:ImageModel) {
-        $script:ImageModel = [Config]::Get("ImageModel")
-    }
-
-    if ($script:Model -eq "gemini") {
-        HandleGeminiKeyState
-    } elseif ($script:Model -like "claude*") {
-        HandleAnthropicKeyState
-    }
 }
 
 HandleDirectories
