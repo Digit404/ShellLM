@@ -875,15 +875,6 @@ class Message {
                 })
             }
 
-            $newMessage = @{
-                role = $messageRole
-                parts = @(
-                    @{
-                        text = $messageContent
-                    }
-                )
-            }
-
             if ($messageRole -eq $contents[-1].role) {
                 $contents.Add(@{
                     role = $messageRole -eq "user" ? "model" : "user"
@@ -893,6 +884,17 @@ class Message {
                         }
                     )
                 })
+
+                $messageContent += " [Reply with '...']"
+            }
+
+            $newMessage = @{
+                role = $messageRole
+                parts = @(
+                    @{
+                        text = $messageContent
+                    }
+                )
             }
 
             $contents += $newMessage
@@ -1395,8 +1397,10 @@ class Message {
         # Replace spaces with underscores
         $filename = $filename -replace "\s", "_"
 
+        $disallowedNames = @("con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9", "...", "_")
+
         # If nothing remains, or if the bot somehow output nothing, return a random filename
-        if (!$filename) {
+        if (!$filename -or $filename -in $disallowedNames) {
             return "file$(Get-Random -Maximum 10000)"
         }
 
