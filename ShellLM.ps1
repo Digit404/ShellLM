@@ -36,7 +36,7 @@
     Clears the AskLLM context, including the last query and response.
 
 .NOTES
-    Version 2.7
+    Version 2.8
     - This script requires an OpenAI API key to make API calls to the OpenAI chat/completions endpoint.
     - The script uses ANSI escape codes for color formatting in the terminal.
     - The script supports various commands that can be used to interact with the chatbot.
@@ -100,12 +100,6 @@ param (
 
     [Parameter(Mandatory=$false)]
     [switch] $Clear,
-
-    [Parameter(Mandatory=$false)]
-    [System.ConsoleColor] $AssistantColor,
-
-    [Parameter(Mandatory=$false)]
-    [System.ConsoleColor] $UserColor,
 
     [Parameter(Mandatory=$false)]
     [string]$ConfigFile = (Join-Path $PSScriptRoot "\config.json")
@@ -337,7 +331,12 @@ class Config {
     [string]$Name
     $Value
     [string]$Category
+
     [string[]]$ValidateSet
+    [string]$ValidateString # Set up, but not used
+    [int]$ValidateMax
+    [int]$ValidateMin
+
     [string]$DefaultValue
 
     static [System.Collections.Generic.List[Config]] $Settings = @()
@@ -351,12 +350,33 @@ class Config {
         [Config]::Settings.Add($this)
     }
 
+    Config ([string]$Name, $Value, [string]$Category) {
+        $this.Name = $Name
+        $this.Value = $Value
+        $this.DefaultValue = $Value
+        $this.Category = $Category
+
+        [Config]::Settings.Add($this)
+    }
+
     Config ([string]$Name, $Value, [string]$Category, [string[]]$ValidateSet) {
         $this.Name = $Name
         $this.Value = $Value
         $this.DefaultValue = $Value
         $this.Category = $Category
         $this.ValidateSet = $ValidateSet
+
+        [Config]::Settings.Add($this)
+    }
+
+    Config ([string]$Name, $Value, [string]$Category, [int]$ValidateMin, [int]$ValidateMax) {
+        $this.Name = $Name
+        $this.Value = $Value
+        $this.DefaultValue = $Value
+        $this.Category = $Category
+
+        $this.ValidateMax = $ValidateMax
+        $this.ValidateMin = $ValidateMin
 
         [Config]::Settings.Add($this)
     }
@@ -393,6 +413,22 @@ class Config {
                 Write-Host (WrapText "Invalid value. Valid values are: $($this.ValidateSet -join ", ")") -ForegroundColor Red
                 return $false
             }
+        } 
+        elseif ($this.ValidateMax -or $this.ValidateMin) { # Won't trigger if both values are 0, but that shouldn't happen
+            if ($NewValue -lt $this.ValidateMin -or $NewValue -gt $this.ValidateMax) {
+                Write-Host (WrapText "Invalid value. Value must be between $($this.ValidateMin) and $($this.ValidateMax)") -ForegroundColor Red
+                return $false
+            }
+        }
+        elseif ($this.ValidateString) {
+            if ($NewValue -notlike $this.ValidateString) {
+                Write-Host (WrapText "Invalid value. Value must match the pattern: $($this.ValidateString)") -ForegroundColor Red
+                return $false
+            }
+        }
+        else {
+            # Boolean values are a special case
+            $NewValue = "true" -like "$NewValue*" -or $NewValue -eq 1
         }
 
         $this.Value = $NewValue
@@ -425,13 +461,15 @@ class Config {
 
                 $index = $config.IndexOf($setting) + 1
 
-                Write-Host "    [$index]`t" -NoNewline
+                $tab = if ($index -lt 10) { "   " } else { "  " }
+
+                Write-Host "    [$index]$tab" -NoNewline
                 Write-Host "$($setting.Name): " -NoNewline -ForegroundColor DarkCyan
                 Write-Host "$($setting.Value)" -ForegroundColor Yellow
 
                 # back option
                 if ($index -eq $config.Count) {
-                    Write-Host "`n    [0]`tSave and go back" -ForegroundColor White
+                    Write-Host "`n    [0]$($tab)Save and go back" -ForegroundColor White
                 }
             }
 
@@ -444,7 +482,7 @@ class Config {
                 if ([int]$settingName -eq 0) {
                     break
                 }
-                Write-Host $config[[int]$settingName - 1].Name
+
                 $settingName = $config[[int]$settingName - 1].Name
             }
 
@@ -460,6 +498,7 @@ class Config {
                 Write-Host "`nSetting matching '$settingName' not found." -ForegroundColor Red
                 continue
             }
+            
 
             # Find returns a list of settings, so we can show the user the error of their ways
             if ($setting.Count -gt 1) {
@@ -489,14 +528,28 @@ class Config {
                     Write-Host "  [$index]`t$value" -ForegroundColor $color
                 }
             }
+            elseif ($setting.ValidateMax -or $setting.ValidateMin) {
+                Write-Host "`nValid Range: [$($setting.ValidateMin) - $($setting.ValidateMax)]" -ForegroundColor DarkYellow
+            }
+            elseif ($setting.ValidateString -and $setting.ValidateString -ne "*") {
+                Write-Host "`nValid Pattern: $($setting.ValidateString)" -ForegroundColor DarkYellow
+            }
+            elseif ($setting.Value -is [bool]) {
+                Write-Host "`nValid values: True or False" -ForegroundColor DarkYellow
+            }
 
             Write-Host "`nNew value:" -ForegroundColor Blue
             Write-Host "> " -NoNewline -ForegroundColor Blue
 
             [string]$newValue = $global:Host.UI.ReadLine()
+
+            # A way to cancel the change
+            if ($newValue -in "back", "quit", "exit", "cancel", "save") {
+                continue
+            }
             
             # check if it's a number
-            if ([int]::TryParse($newValue, [ref]$null)) {
+            if ($setting.ValidateSet -and [int]::TryParse($newValue, [ref]$null)) {
                 $newValue = $setting.ValidateSet[[int]$newValue - 1]
             }
 
@@ -642,9 +695,6 @@ class Message {
     [string]$content;
     [string]$role;
 
-    static [string] $AI_COLOR = $script:COLORS.$($script:AssistantColor.ToString())
-    static [string] $USER_COLOR = $script:COLORS.$($script:UserColor.ToString())
-
     static [string] $OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
     static [string] $OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations"
     static [string] $ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
@@ -684,9 +734,22 @@ class Message {
 
         switch ($script:MODEL) {
             # Would love to solve this with a model class, but they all need their own special logic, and it's not really worth it
-            {$_ -like "gemini*"} { 
+            {$_ -like "gemini*"} {
+
+                # Don't listen to the api; these are all the categories that gemini can block
+                $safetyCategories = @("HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_DANGEROUS_CONTENT")
+
                 $body = @{
                     contents = [Message]::ConvertToGemini()
+                    safetySettings = foreach ($category in $safetyCategories) {
+                        @{
+                            category = $category
+                            threshold = [Config]::Get("GeminiSafetyThreshold")
+                        }
+                    }
+                    generationConfig = @{
+                        temperature = [Config]::Get("Temperature")
+                    }
                 }
         
                 $response = [Message]::CallGemini($body)
@@ -731,6 +794,8 @@ class Message {
                     model = $Model
                     max_tokens = 4000; # Required, 4000 recommended by Anthropic, but seems kinda small
                     messages = [Message]::ConvertToAnthropic()
+                    # Unlike every other model, Claude's temperature is 0-1, but 1 isn't ridiculously random, so we just cap it at 1
+                    temperature = ([Math]::Min([Config]::Get("Temperature"), 1))
                 }
         
                 $response = [Message]::CallAnthropic([Message]::ANTHROPIC_URL, $body)
@@ -745,6 +810,7 @@ class Message {
                 $body = @{
                     model = $script:MODEL
                     messages = [Message]::Messages
+                    temperature = ([int][Config]::Get("Temperature"))
                 }
         
                 $response = [Message]::CallOpenAI([Message]::OPENAI_CHAT_URL, $body)
@@ -876,6 +942,8 @@ class Message {
             }
 
             if ($messageRole -eq $contents[-1].role) {
+                $contents[-1].parts[0].text += " [Reply with '...']"
+
                 $contents.Add(@{
                     role = $messageRole -eq "user" ? "model" : "user"
                     parts = @(
@@ -884,8 +952,6 @@ class Message {
                         }
                     )
                 })
-
-                $messageContent += " [Reply with '...']"
             }
 
             $newMessage = @{
@@ -965,18 +1031,21 @@ class Message {
     [string] GetColoredMessage () { # Get the message content with the appropriate color formatting
         $messageContent = $this.content
 
+        $AssistantColor = $script:COLORS.$([Config]::Get("AssistantColor").ToString())
+
         # If the message is not a system message, apply color formatting
-        if (!($this.role -eq "system")) {
+        if ($this.role -ne "system") {
             foreach ($Item in $script:COLORS.GetEnumerator()) {
                 $messageContent = $messageContent -replace "{$($Item.Key)}", $Item.Value
-                $messageContent = $messageContent -replace "{/$($Item.Key)}", $script:COLORS.RESET # Sometimes the bots do this, but it's not inteded
+                $messageContent = $messageContent -replace "{/$($Item.Key)}", $AssistantColor # Sometimes the bots do this, but it's not inteded
             }
+            $messageContent = $messageContent -replace "{RESET}", $AssistantColor
         }
 
         $color = if ($this.role -eq "assistant") {
-            [Message]::AI_COLOR
+            $script:COLORS.$([Config]::Get("AssistantColor").ToString())
         } elseif ($this.role -eq "user") {
-            [Message]::USER_COLOR
+            $script:COLORS.$([Config]::Get("UserColor").ToString())
         } else {
             $script:COLORS.WHITE
         }
@@ -989,9 +1058,9 @@ class Message {
         $messageContent = $this.GetColoredMessage()
 
         $Indent = if ($this.role -eq "assistant") {
-            ([Message]::AI_COLOR + "LLM: ")
+            ($script:COLORS.$([Config]::Get("AssistantColor").ToString()) + "LLM: ")
         } elseif ($this.role -eq "user") {
-            ([Message]::USER_COLOR + "You: ")
+            ($script:COLORS.$([Config]::Get("UserColor").ToString()) + "You: ")
         } else {
             ($script:COLORS.WHITE + "Sys: ")
         }
@@ -1029,7 +1098,13 @@ class Message {
             Write-Host "There are no messages in history." -ForegroundColor Red
             return
         }
-        [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+
+        # Probably don't want to remove your own message if there's an error
+        if ([Message]::Messages[-1].role -eq "assistant") {
+            [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
+
+        }
+
         Write-Host ([Message]::Submit().FormatMessage())
     }
 
@@ -1195,14 +1270,18 @@ class Message {
 
     static History () {
         # Get all non-system messages
-        $nonSystemMessages = [Message]::Messages | Where-Object { $_.role -ne "system" }
+        if ([Config]::Get("ShowSystemMessages") -eq "false") {
+            $History = [Message]::Messages | Where-Object { $_.role -ne "system" }
+        } else {
+            $History = [Message]::Messages
+        }
 
-        if (!$nonSystemMessages) {
+        if (!$History) {
             Write-Host "There are no messages in history" -ForegroundColor Red
             return
         }
 
-        foreach ($message in $nonSystemMessages) {
+        foreach ($message in $History) {
             Write-Host ($message.FormatHistory())
             Write-Host ""
         }
@@ -1381,7 +1460,7 @@ class Message {
 
         # Hopefully the bot will say something interesting in response to this, and not something random
         $message = [Message]::Whisper("Image successfully created and saved to the user's computer in the .\images\ folder. Write a message informing the user.")
-        Write-Host (WrapText $message) -ForegroundColor $script:AssistantColor
+        Write-Host (WrapText $message) -ForegroundColor ([Config]::Get("AssistantColor"))
     }
 
     static [string] ValidateFilename ([string]$filename) { # strips invalid chars and other stuff the bot likes to add from generated filenames
@@ -1626,7 +1705,7 @@ function DefineCommands {
     ) | Out-Null
 
     [Command]::new(
-        ("settings", "config"), 
+        ("config", "settings"), 
         {[Config]::ChangeSettings()}, 
         "Change the persistent settings of the program"
     ) | Out-Null
@@ -1635,13 +1714,74 @@ function DefineCommands {
 function DefineSettings {
     [Config]::Settings.Clear()
 
-    [Config]::new("DefaultModel", "gpt-3.5-turbo", "Chat", $script:MODELS) | Out-Null # gpt-4 is too expensive to be default
-    [Config]::new("ImageModel", "dall-e-3", "Image", $script:IMAGE_MODELS) | Out-Null # Nobody wants to use dall-e-2
-    [Config]::new("ImageSize", "1024x1024", "Image", @("1024x1024", "1792x1024", "1024x1792")) | Out-Null
-    [Config]::new("ImageStyle", "vivid", "Image", @("vivid", "natural")) | Out-Null
-    [Config]::new("ImageQuality", "standard", "Image", @("standard", "hd")) | Out-Null
-    [Config]::new("AssistantColor", "DarkYellow", "Chat", [System.ConsoleColor]::GetValues([System.ConsoleColor])) | Out-Null
-    [Config]::new("UserColor", "Blue", "Chat", [System.ConsoleColor]::GetValues([System.ConsoleColor])) | Out-Null
+    [Config]::new(
+        "DefaultModel", 
+        "gpt-3.5-turbo", 
+        "Chat", 
+        $script:MODELS
+    ) | Out-Null # gpt-4 is too expensive to be default
+
+    [Config]::new(
+        "ImageModel", 
+        "dall-e-3", 
+        "Image", 
+        $script:IMAGE_MODELS
+    ) | Out-Null # Nobody wants to use dall-e-2
+
+    [Config]::new(
+        "ImageSize", 
+        "1024x1024", 
+        "Image", 
+        @("1024x1024", "1792x1024", "1024x1792")
+    ) | Out-Null
+
+    [Config]::new(
+        "ImageStyle", 
+        "vivid", 
+        "Image", 
+        @("vivid", "natural")
+    ) | Out-Null
+
+    [Config]::new(
+        "ImageQuality", 
+        "standard", 
+        "Image", 
+        @("standard", "hd")
+    ) | Out-Null
+    [Config]::new(
+        "AssistantColor", 
+        "DarkYellow", 
+        "Chat", 
+        [System.ConsoleColor]::GetValues([System.ConsoleColor]
+    )) | Out-Null
+
+    [Config]::new(
+        "UserColor", 
+        "Blue", 
+        "Chat", 
+        [System.ConsoleColor]::GetValues([System.ConsoleColor])
+    ) | Out-Null
+
+    [Config]::new(
+        "GeminiSafetyThreshold", 
+        "HARM_BLOCK_THRESHOLD_UNSPECIFIED", 
+        "Gemini", 
+        @("HARM_BLOCK_THRESHOLD_UNSPECIFIED", "BLOCK_LOW_AND_ABOVE", "BLOCK_MEDIUM_AND_ABOVE", "BLOCK_ONLY_HIGH", "BLOCK_NONE")
+    ) | Out-Null
+
+    [Config]::new(
+        "Temperature", 
+        "1", 
+        "Chat", 
+        0, 
+        2
+    ) | Out-Null
+
+    [Config]::new(
+        "ShowSystemMessages",
+        $false,
+        "Chat"
+    ) | Out-Null
 
     # After init, immediately load the config file
     [Config]::ReadConfig()
@@ -1654,14 +1794,6 @@ function DefineSettings {
     if (!$script:ImageModel) {
         $script:ImageModel = [Config]::Get("ImageModel")
     }
-    
-    if (!$script:UserColor) {
-        $script:UserColor = [Config]::Get("UserColor")
-    }
-    
-    if (!$script:AssistantColor) {
-        $script:AssistantColor = [Config]::Get("AssistantColor")
-    }
 }
 
 DefineSettings
@@ -1669,8 +1801,6 @@ DefineSettings
 [Message]::Reset()
 
 DefineCommands
-
-$COLORS.RESET = $COLORS.$($AssistantColor.ToString())
 
 if ($Model -eq "gemini") {
     HandleGeminiKeyState
@@ -1716,7 +1846,7 @@ if ((Test-Path (Join-Path $CONVERSATIONS_DIR "Autoload.json")) -and !$Load -and 
 
 try {
     while ($true) {
-        Write-Host "Chat > " -NoNewline -ForegroundColor $UserColor
+        Write-Host "Chat > " -NoNewline -ForegroundColor ([Config]::Get("UserColor"))
         $prompt = $Host.UI.ReadLine()
 
         # Do command handling

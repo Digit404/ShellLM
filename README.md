@@ -68,7 +68,7 @@ ShellLM is a feature-rich and flexible terminal application that allows users to
 - `/copy [number of messages back]` (`/cp`): Copy the last response to the clipboard (without formatting).
 - `/paste [prompt]` (`/clipboard`): Provide the model with the content of your clipboard as context.
 - `/rules [instructions]` (`/instructions`): Set custom instructions for the model to follow during the conversation.
-- `/settings`: Change other persistent settings.
+- `/config`: Change other persistent settings.
 
 ### Troubleshooting
 
