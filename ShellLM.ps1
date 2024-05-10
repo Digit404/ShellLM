@@ -32,6 +32,15 @@
 .PARAMETER Clear
     Clears the AskLLM context, including the last query and response.
 
+.PARAMETER ConfigFile
+    Specifies the path to the configuration file that stores the settings for the chatbot. The default value is "config.json".
+
+.PARAMETER ConversationsDir
+    Specifies the directory where conversation files are stored. The default value is "conversations\".
+
+.PARAMETER ImagesDir
+    Specifies the directory where image files are stored. The default value is "images\".
+
 .NOTES
     Version 2.8
     - This script requires an OpenAI API key to make API calls to the OpenAI chat/completions endpoint.
@@ -95,7 +104,13 @@ param (
     [switch] $Clear,
 
     [Parameter(Mandatory=$false)]
-    [string]$ConfigFile = (Join-Path $PSScriptRoot "\config.json")
+    [string]$ConfigFile = (Join-Path $PSScriptRoot "\config.json"),
+
+    [Parameter(Mandatory=$false)]
+    [string]$ConversationsDir = (Join-Path $PSScriptRoot "\conversations\"),
+
+    [Parameter(Mandatory=$false)]
+    [string]$ImagesDir = (Join-Path $PSScriptRoot "\images\")
 )
 
 $MODELS = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gemini", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku"
@@ -103,11 +118,8 @@ $IMAGE_MODELS = "dall-e-2", "dall-e-3"
 
 $ESC = [char]27 # Escape char for colors
 
-# Consider making this a parameter
-$CONVERSATIONS_DIR = Join-Path $PSScriptRoot .\conversations\
-
 # Added this part because the bot will always remember the last interaction and sometimes this is undesirable if you want a different output
-if ($Clear) {
+if ($Clear) { # Do this first so the user doesn't have to wait for the model to load
     $global:LastQuery = ""
     $global:LastResponse = ""
     Write-Host "AskLLM context cleared" -ForegroundColor Yellow
@@ -116,21 +128,25 @@ if ($Clear) {
     }
 }
 
-if (!(Test-Path $CONVERSATIONS_DIR)) {
-    New-Item -ItemType Directory -Path $CONVERSATIONS_DIR | Out-Null
+function HandleDirectories {
+    if ($script:PSScriptRoot) {
+        if (!(Test-Path $script:ConversationsDir)) {
+            New-Item -ItemType Directory -Path $script:ConversationsDir | Out-Null
+        }
+
+        $script:ConversationsDir = Resolve-Path ($script:ConversationsDir)
+
+        if (!(Test-Path $script:ImagesDir)) {
+            New-Item -ItemType Directory -Path $script:ImagesDir | Out-Null
+        }
+
+        $script:ImagesDir = Resolve-Path ($script:ImagesDir)
+    } else {
+        $script:ConversationsDir = Resolve-Path ".\conversations\"
+        $script:ImagesDir = Resolve-Path ".\images\"
+        $script:ConfigFile = Resolve-Path ".\config.json"
+    }
 }
-
-$CONVERSATIONS_DIR = Resolve-Path ($CONVERSATIONS_DIR)
-
-$IMAGES_DIR = Join-Path $PSScriptRoot .\images\
-
-if (!(Test-Path $IMAGES_DIR)) {
-    New-Item -ItemType Directory -Path $IMAGES_DIR | Out-Null
-}
-
-$IMAGES_DIR = Resolve-Path ($IMAGES_DIR)
-
-# Handle key state
 
 function HandleOpenAIKeyState { # Just to group it together, this is the only place it's used
     if ($env:OPENAI_API_KEY -and $script:Key) {
@@ -214,19 +230,18 @@ function HandleAnthropicKeyState { # This will only be called if the model is cl
     }
 }
 
-HandleOpenAIKeyState
+function HandleModelState { # the turbo models are better than the base models and are less expensive
+    if ($script:Model -in "gpt-3", "gpt-3.5") {
+        $script:Model = "gpt-3.5-turbo"
+    }
 
-# the turbo models are better than the base models and are less expensive
-if ($model -eq "gpt-3" -or $model -eq "gpt-3.5") {
-    $model = "gpt-3.5-turbo"
-}
+    if ($script:Model -eq "gpt-4") {
+        $script:Model = "gpt-4-turbo"
+    }
 
-if ($model -eq "gpt-4") {
-    $model = "gpt-4-turbo"
-}
-
-if ($model -eq "claude-3") {
-    $model = "claude-3-sonnet"
+    if ($script:Model -eq "claude-3") {
+        $script:Model = "claude-3-sonnet"
+    }
 }
 
 $SYSTEM_MESSAGE = (
@@ -1089,7 +1104,7 @@ class Message {
     static Reset() {
         [Message]::Messages.Clear()
 
-        if ((Test-Path (Join-Path $script:CONVERSATIONS_DIR "Autoload.json")) -and [Config]::Get("Autoload")) {
+        if ((Test-Path (Join-Path $script:ConversationsDir "Autoload.json")) -and [Config]::Get("Autoload")) {
             [Message]::LoadFile("Autoload")
         } else {
             # Default message to start the conversation and inform the bot on how to use the colors
@@ -1138,7 +1153,7 @@ class Message {
 
                     $failed = 0
 
-                    while (Join-Path $script:CONVERSATIONS_DIR "$filename.json" | Test-Path) {
+                    while (Join-Path $script:ConversationsDir "$filename.json" | Test-Path) {
                         if ($failed -gt 5) {
                             $filename = "UnnamedConversation$(Get-Random -Maximum 10000)"
                         }
@@ -1165,7 +1180,7 @@ class Message {
             # Ensure it ends in .json
             $filename += $filename -notlike "*.json" ? ".json" : ""
 
-            $filepath = Join-Path $script:CONVERSATIONS_DIR $filename
+            $filepath = Join-Path $script:ConversationsDir $filename
 
             if (Test-Path $filepath) {
                 Write-Host "A file with that name already exists. Overwrite? " -ForegroundColor Red -NoNewline
@@ -1209,7 +1224,7 @@ class Message {
             Write-Host "Saved conversations:"
 
             # Sort items by most recent
-            $conversations = Get-ChildItem -Path $script:CONVERSATIONS_DIR -Filter *.json | Sort-Object LastWriteTime -Descending
+            $conversations = Get-ChildItem -Path $script:ConversationsDir -Filter *.json | Sort-Object LastWriteTime -Descending
 
             # display each item
             foreach ($conversation in $conversations) {
@@ -1268,7 +1283,7 @@ class Message {
 
         # Check if the file exists first in the contenxt of the user's current directory, then in the conversations directory
         if (!(Test-Path $Path)) {
-            $Path = Join-Path $script:CONVERSATIONS_DIR $Path
+            $Path = Join-Path $script:ConversationsDir $Path
             if (!(Test-Path $Path)) {
                 Write-Host "File $($Path) not found" -ForegroundColor Red
                 return
@@ -1450,7 +1465,7 @@ class Message {
         $failed = 0
 
         # The bot can be unoriginal sometimes
-        while (Join-Path $script:IMAGES_DIR "$filename.png" | Test-Path) {
+        while (Join-Path $script:ImagesDir "$filename.png" | Test-Path) {
             if ($failed -gt 5) {
                 $filename = "UnnamedImage$(Get-Random -Maximum 10000)"
             }
@@ -1462,7 +1477,7 @@ class Message {
 
         $filename = [Message]::ValidateFilename($filename)
 
-        $outputPath = Join-Path $script:IMAGES_DIR "$filename.png"
+        $outputPath = Join-Path $script:ImagesDir "$filename.png"
 
         # Download the image
         Invoke-WebRequest -Uri $url -OutFile $outputPath
@@ -1814,6 +1829,8 @@ function DefineSettings {
     # After init, immediately load the config file
     [Config]::ReadConfig()
 
+    HandleModelState
+
     # Asign the global values from the config file
     if (!$script:Model) {
         $script:Model = [Config]::Get("DefaultModel")
@@ -1822,7 +1839,15 @@ function DefineSettings {
     if (!$script:ImageModel) {
         $script:ImageModel = [Config]::Get("ImageModel")
     }
+
+    if ($script:Model -eq "gemini") {
+        HandleGeminiKeyState
+    } elseif ($script:Model -like "claude*") {
+        HandleAnthropicKeyState
+    }
 }
+
+HandleDirectories
 
 DefineSettings
 
@@ -1830,11 +1855,7 @@ DefineSettings
 
 DefineCommands
 
-if ($Model -eq "gemini") {
-    HandleGeminiKeyState
-} elseif ($Model -like "claude*") {
-    HandleAnthropicKeyState
-}
+HandleOpenAIKeyState
 
 # AskLLM mode, include the question in the command and it will try to answer as briefly as it can
 if ($Query) {
@@ -1868,7 +1889,7 @@ if ($Load) {
     [Message]::LoadFile($Load)
 }
 
-if ((Test-Path (Join-Path $CONVERSATIONS_DIR "Autoload.json")) -and !$Load -and [Config]::Get("Autoload")) {
+if ((Test-Path (Join-Path $ConversationsDir "Autoload.json")) -and !$Load -and [Config]::Get("Autoload")) {
     [Message]::LoadFile("Autoload")
 }
 
@@ -1905,6 +1926,6 @@ try {
     # For some reason, ctrl+c triggers finally, but doesn't run the function
     # Save the conversation to autosave
     if ([Config]::Get("Autosave")) {
-        [Message]::SaveFile((Join-Path $CONVERSATIONS_DIR "autosave.json"))
+        [Message]::SaveFile((Join-Path $ConversationsDir "autosave.json"))
     }
 }
