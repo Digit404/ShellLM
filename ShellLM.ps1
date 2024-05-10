@@ -1286,10 +1286,10 @@ class Message {
 
     static History () {
         # Get all non-system messages
-        if ([Config]::Get("ShowSystemMessages") -eq "false") {
-            $History = [Message]::Messages | Where-Object { $_.role -ne "system" }
-        } else {
+        if ([Config]::Get("ShowSystemMessages")) {
             $History = [Message]::Messages
+        } else {
+            $History = [Message]::Messages | Where-Object { $_.role -ne "system" }
         }
 
         if (!$History) {
