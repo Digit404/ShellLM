@@ -326,7 +326,7 @@ class Config {
     [string]$Category
 
     [string[]]$ValidateSet
-    [string]$ValidateString # Set up, but not used
+    [string]$ValidateString # funcional, but not used
     [int]$ValidateMax
     [int]$ValidateMin
 
@@ -334,7 +334,7 @@ class Config {
 
     static [System.Collections.Generic.List[Config]] $Settings = @()
 
-    Config ([string]$Name, $Value) {
+    Config ([string]$Name, $Value) { # Not used
         $this.Name = $Name
 
         $this.Value = $Value
@@ -1242,17 +1242,24 @@ class Message {
 
         } else {
             # If the user provided a comversation name
-            Write-Host "This will clear the current conversation. Continue? " -NoNewline
-            Write-Host "[$($script:COLORS.DARKGREEN)y$($script:COLORS.WHITE)/$($script:COLORS.DARKRED)n$($script:COLORS.WHITE)]"
 
-            # Make sure they have a chance to turn back
-            Write-Host "> " -NoNewline
-            if ($global:Host.UI.ReadLine() -ne "y") {
-                return
+            $nonSystemMessages = [Message]::Messages | Where-Object { $_.role -ne "system" }
+
+            if ($nonSystemMessages.Count -ge 1) { # Check if there are messages in the conversation
+                Write-Host "This will clear the current conversation. Continue? " -NoNewline
+                Write-Host "[$($script:COLORS.DARKGREEN)y$($script:COLORS.WHITE)/$($script:COLORS.DARKRED)n$($script:COLORS.WHITE)]"
+
+                # Make sure they have a chance to turn back
+                Write-Host "> " -NoNewline
+                if ($global:Host.UI.ReadLine() -ne "y") {
+                    return
+                }
             }
         }
 
         [Message]::LoadFile($filename)
+
+        Write-Host "Conversation ""$filename"" loaded" -ForegroundColor Green
     }
 
     static LoadFile([string]$File) {
@@ -1274,10 +1281,6 @@ class Message {
 
         foreach ($message in $json) {
             [Message]::AddMessage($message.content, $message.role)
-        }
-
-        if ($file -ne "autoload") { # Silent autoload
-            Write-Host "Conversation ""$File"" loaded" -ForegroundColor Green
         }
     }
 
