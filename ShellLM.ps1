@@ -17,9 +17,6 @@
 .PARAMETER Load
     Specifies a file containing a conversation to load. This can be used to continue a previous conversation.
 
-.PARAMETER NoAutoload
-    Specifies that the script should not automatically load the conversation from the "autoload.json" file on startup.
-
 .PARAMETER Key
     Specifies the OpenAI API key to use for making API calls to the OpenAI chat/completions endpoint.
     If not provided, the script will prompt the user to enter the API key. It will also automatically set the API key as an environment variable.
@@ -83,10 +80,6 @@ param (
     [Parameter(Mandatory=$false)]
     [Alias("l", "Import", "File", "Conversation")]
     [string] $Load,
-
-    [Parameter(Mandatory=$false)]
-    [Alias("NoLoad")]
-    [switch] $NoAutoload,
 
     [Parameter(Mandatory=$false)]
     [Alias("k")]
@@ -463,9 +456,15 @@ class Config {
 
                 $tab = if ($index -lt 10) { "   " } else { "  " }
 
+                $color = if ($setting.Value -is [bool]) {
+                    if ($setting.Value) { "Green" } else { "Red" }
+                } else {
+                    "Yellow"
+                }
+
                 Write-Host "    [$index]$tab" -NoNewline
                 Write-Host "$($setting.Name): " -NoNewline -ForegroundColor DarkCyan
-                Write-Host "$($setting.Value)" -ForegroundColor Yellow
+                Write-Host "$($setting.Value)" -ForegroundColor $color
 
                 # back option
                 if ($index -eq $config.Count) {
@@ -1076,7 +1075,7 @@ class Message {
     static Reset() {
         [Message]::Messages.Clear()
 
-        if ((Test-Path (Join-Path $script:CONVERSATIONS_DIR "Autoload.json")) -and !$script:NoAutoload) {
+        if ((Test-Path (Join-Path $script:CONVERSATIONS_DIR "Autoload.json")) -and [Config]::Get("Autoload")) {
             [Message]::LoadFile("Autoload")
         } else {
             # Default message to start the conversation and inform the bot on how to use the colors
@@ -1783,6 +1782,18 @@ function DefineSettings {
         "Chat"
     ) | Out-Null
 
+    [Config]::new(
+        "Autoload",
+        $true,
+        "System"
+    ) | Out-Null
+
+    [Config]::new(
+        "Autosave",
+        $true,
+        "System"
+    ) | Out-Null
+
     # After init, immediately load the config file
     [Config]::ReadConfig()
 
@@ -1840,7 +1851,7 @@ if ($Load) {
     [Message]::LoadFile($Load)
 }
 
-if ((Test-Path (Join-Path $CONVERSATIONS_DIR "Autoload.json")) -and !$Load -and !$NoAutoload) {
+if ((Test-Path (Join-Path $CONVERSATIONS_DIR "Autoload.json")) -and !$Load -and [Config]::Get("Autoload")) {
     [Message]::LoadFile("Autoload")
 }
 
@@ -1876,5 +1887,7 @@ try {
 } finally {
     # For some reason, ctrl+c triggers finally, but doesn't run the function
     # Save the conversation to autosave
-    [Message]::SaveFile((Join-Path $CONVERSATIONS_DIR "autosave.json"))
+    if ([Config]::Get("Autosave")) {
+        [Message]::SaveFile((Join-Path $CONVERSATIONS_DIR "autosave.json"))
+    }
 }
