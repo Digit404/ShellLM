@@ -66,8 +66,8 @@ param (
         "gpt-3",
         "gpt-3.5",
         "gpt-3.5-turbo",
-        "gpt-4",
         "gpt-4-turbo",
+        "gpt-4o",
         "gemini",
         "claude-3",
         "claude-3-opus", 
@@ -113,7 +113,7 @@ param (
     [string]$ImagesDir = (Join-Path $PSScriptRoot "\images\")
 )
 
-$MODELS = "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gemini", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku"
+$MODELS = "gpt-3.5-turbo", "gpt-4-turbo", "gpt-4o", "gemini", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku"
 $IMAGE_MODELS = "dall-e-2", "dall-e-3"
 
 $ESC = [char]27 # Escape char for colors
@@ -1137,7 +1137,9 @@ class Message {
     }
 
     static Retry() {
-        if ([Message]::Messages.Count -lt 2) {
+        $nonSystemMessages = [Message]::Messages | Where-Object { $_.role -ne "system" }
+
+        if ($nonSystemMessages.Count -lt 2) {
             Write-Host "There are no messages in history." -ForegroundColor Red
             return
         }
@@ -1145,7 +1147,6 @@ class Message {
         # Probably don't want to remove your own message if there's an error
         if ([Message]::Messages[-1].role -eq "assistant") {
             [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
-
         }
 
         Write-Host ([Message]::Submit().FormatMessage())
@@ -1556,8 +1557,11 @@ class Message {
         $MessageContent = $this.content
 
         # Remove all color information from the message
-        foreach ($Item in $script:COLORS.GetEnumerator()) {
-            $MessageContent = $MessageContent -replace "{$($Item.Key)}", ""
+        $colors = $script:COLORS.keys + "RESET"
+
+        foreach ($color in $colors) {
+            $MessageContent = $MessageContent -replace "{$color}", ""
+            $MessageContent = $MessageContent -replace "{/$color}", ""
         }
 
         Set-Clipboard -Value $MessageContent
@@ -1893,7 +1897,7 @@ if ((Test-Path (Join-Path $ConversationsDir "Autoload.json")) -and !$Load -and [
     [Message]::LoadFile("Autoload")
 }
 
-try {
+try { # Main Loop
     while ($true) {
         Write-Host "Chat > " -NoNewline -ForegroundColor ([Config]::Get("UserColor"))
         $prompt = $Host.UI.ReadLine()
