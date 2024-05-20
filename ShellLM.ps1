@@ -66,6 +66,7 @@ param (
         "gpt-3",
         "gpt-3.5",
         "gpt-3.5-turbo",
+        "gpt-4",
         "gpt-4-turbo",
         "gpt-4o",
         "gemini",
@@ -117,6 +118,11 @@ $MODELS = "gpt-3.5-turbo", "gpt-4-turbo", "gpt-4o", "gemini", "claude-3-opus", "
 $IMAGE_MODELS = "dall-e-2", "dall-e-3"
 
 $ESC = [char]27 # Escape char for colors
+
+if (!$PSVersionTable.PSCompatibleVersions -contains "7.0") {
+    Write-Host "This script requires PowerShell 7.0 or later." -ForegroundColor Red
+    exit
+}
 
 # Added this part because the bot will always remember the last interaction and sometimes this is undesirable if you want a different output
 if ($Clear) { # Do this first so the user doesn't have to wait for the model to load
@@ -236,7 +242,7 @@ function HandleModelState { # the turbo models are better than the base models a
     }
 
     if ($script:Model -eq "gpt-4") {
-        $script:Model = "gpt-4-turbo"
+        $script:Model = "gpt-4o"
     }
 
     if ($script:Model -eq "claude-3") {
@@ -260,7 +266,7 @@ function HandleModelState { # the turbo models are better than the base models a
 }
 
 $SYSTEM_MESSAGE = (
-    'You are communicating through the terminal. Do not use markdown syntax. ' +
+    'You are a helpful assistant communicating through the terminal. Do not use markdown syntax. ' +
     'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want, and {RESET} to go back. ' +
     'If you write code, do not use "```". Use colors for syntax highlighting instead. ' +
     'Colors available are RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, GRAY, RESET. ' +
@@ -434,9 +440,11 @@ class Config {
 
     [bool] SetValue ($NewValue) { # returns true if successful
         if ($this.ValidateSet) {
-            foreach ($item in $this.ValidateSet) {
-                if ($item -like "$NewValue*") {
-                    $NewValue = $item
+            if ($NewValue -notin $this.ValidateSet) {
+                foreach ($item in $this.ValidateSet) {
+                    if ($item -like "$NewValue*") {
+                        $NewValue = $item
+                    }
                 }
             }
 
@@ -901,10 +909,10 @@ class Message {
         try {
             $bodyJSON = $body | ConvertTo-Json -Depth 8 -Compress
 
-            $model = "gemini-pro" # Used for if google takes 1.5 out of preview, currently 1.5 is rate limited to 2 requests per minute. Not useful
+            $model = if ($script:Model -eq "gemini") { "gemini-pro" } else { "gemini-1.5-pro" }
 
             # Assemble the URL because google has never heard of a header
-            $url = "https://generativelanguage.googleapis.com/v1beta/models/$($model):generateContent?key=$script:GeminiKey"
+            $url = "https://generativelanguage.googleapis.com/v1/models/$($model):generateContent?key=$script:GeminiKey"
 
             # Main API call to Gemini
             $response = Invoke-WebRequest `
@@ -1387,8 +1395,8 @@ class Message {
 
         # Just print all model information if no model is provided
         if (!$Model) {
-            Write-Host "`nAvailable models:"
-            Write-Host "`nText Models:" -ForegroundColor DarkYellow
+            Write-Host ""
+            Write-Host "Text Models:" -ForegroundColor DarkYellow
 
             foreach ($model in $Models) {
                 $index = $Models.IndexOf($model) + 1
