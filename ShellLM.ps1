@@ -105,7 +105,7 @@ param (
     [switch] $Clear,
 
     [Parameter(Mandatory=$false)]
-    [string]$ConfigFile = (Join-Path $PSScriptRoot "\config.json"),
+    [string]$ConfigFile = (Join-Path $PSScriptRoot "\config.yaml"),
 
     [Parameter(Mandatory=$false)]
     [string]$ConversationsDir = (Join-Path $PSScriptRoot "\conversations\"),
@@ -369,6 +369,7 @@ class Config {
     $DefaultValue
 
     static [System.Collections.Generic.List[Config]] $Settings = @()
+    static [bool] $IsYaml = (get-module -name powershell-yaml)
 
     Config ([string]$Name, $Value) { # Not used
         $this.Name = $Name
@@ -622,12 +623,12 @@ class Config {
             }
         }
 
-        $config | ConvertTo-Json | Set-Content -Path $script:ConfigFile
+        $config | ConvertTo-Yaml | Set-Content -Path $script:ConfigFile
     }
 
     static ReadConfig () {
         if (Test-Path $script:ConfigFile) {
-            $config = Get-Content -Path $script:ConfigFile | ConvertFrom-Json
+            $config = Get-Content -Path $script:ConfigFile | ConvertFrom-Yaml
 
             foreach ($setting in $config.PSObject.Properties) {
                 [Config]::SetValue($setting.Name, $setting.Value)
@@ -743,8 +744,10 @@ class Command {
 }
 
 class Message {
-    [string]$content;
-    [string]$role;
+    [string]$Content;
+    [string]$Role;
+
+    [string]$ImageURL;
 
     static [string] $OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
     static [string] $OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations"
@@ -755,8 +758,14 @@ class Message {
     static [System.Collections.Generic.List[Message]] $Messages = @()
 
     Message([string]$content, [string]$role) {
-        $this.content = $content
-        $this.role = $role ? $role : "user"
+        $this.Content = $content
+        $this.Role = $role ? $role : "user"
+    }
+
+    Message([string]$content, [string]$role, [string]$imageURL) {
+        $this.Content = $content
+        $this.Role = $role ? $role : "user"
+        $this.ImageURL = $imageURL
     }
 
     static [Message] AddMessage ([string]$content, [string]$role) {
@@ -1080,12 +1089,12 @@ class Message {
     }
 
     [string] GetColoredMessage () { # Get the message content with the appropriate color formatting
-        $messageContent = $this.content
+        $messageContent = $this.Content
 
         $AssistantColor = $script:COLORS.$([Config]::Get("AssistantColor").ToString())
 
         # If the message is not a system message, apply color formatting
-        if ($this.role -ne "system") {
+        if ($this.Role -ne "system") {
             foreach ($Item in $script:COLORS.GetEnumerator()) {
                 $messageContent = $messageContent -replace "{$($Item.Key)}", $Item.Value
                 $messageContent = $messageContent -replace "{/$($Item.Key)}", $AssistantColor # Sometimes the bots do this, but it's not inteded
@@ -1093,9 +1102,9 @@ class Message {
             $messageContent = $messageContent -replace "{RESET}", $AssistantColor
         }
 
-        $color = if ($this.role -eq "assistant") {
+        $color = if ($this.Role -eq "assistant") {
             $script:COLORS.$([Config]::Get("AssistantColor").ToString())
-        } elseif ($this.role -eq "user") {
+        } elseif ($this.Role -eq "user") {
             $script:COLORS.$([Config]::Get("UserColor").ToString())
         } else {
             $script:COLORS.WHITE
@@ -1108,9 +1117,9 @@ class Message {
     [string] FormatHistory() {
         $messageContent = $this.GetColoredMessage()
 
-        $Indent = if ($this.role -eq "assistant") {
+        $Indent = if ($this.Role -eq "assistant") {
             ($script:COLORS.$([Config]::Get("AssistantColor").ToString()) + "LLM: ")
-        } elseif ($this.role -eq "user") {
+        } elseif ($this.Role -eq "user") {
             ($script:COLORS.$([Config]::Get("UserColor").ToString()) + "You: ")
         } else {
             ($script:COLORS.WHITE + "Sys: ")
@@ -1562,7 +1571,7 @@ class Message {
     }
 
     Copy () {
-        $MessageContent = $this.content
+        $MessageContent = $this.Content
 
         # Remove all color information from the message
         $colors = $script:COLORS.keys + "RESET"
