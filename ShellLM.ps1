@@ -266,7 +266,7 @@ function HandleModelState { # the turbo models are better than the base models a
 }
 
 $SYSTEM_MESSAGE = (
-    'You are a helpful assistant communicating through the terminal. Do not use markdown syntax. ' +
+    'You are a helpful assistant communicating through the terminal. Do not use markdown syntax. Give detailed responses. ' +
     'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want, and {RESET} to go back. ' +
     'If you write code, do not use "```". Use colors for syntax highlighting instead. ' +
     'Colors available are RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, GRAY, RESET. ' +
@@ -625,7 +625,6 @@ class Config {
         }
 
         if ([Config]::IsYaml) {
-            Write-Host Writing to money town please
             $config | ConvertTo-Yaml | Set-Content -Path $script:ConfigFile
         } else {
             $config | ConvertTo-Json | Set-Content -Path $script:ConfigFile
@@ -774,12 +773,6 @@ class Message {
     Message([string]$content, [string]$role) {
         $this.Content = $content
         $this.Role = $role ? $role : "user"
-    }
-
-    Message([string]$content, [string]$role, [string]$imageURL) {
-        $this.Content = $content
-        $this.Role = $role ? $role : "user"
-        $this.ImageURL = $imageURL
     }
 
     static [Message] AddMessage ([string]$content, [string]$role) {
@@ -1109,11 +1102,20 @@ class Message {
 
         # If the message is not a system message, apply color formatting
         if ($this.Role -ne "system") {
-            foreach ($Item in $script:COLORS.GetEnumerator()) {
-                $messageContent = $messageContent -replace "{$($Item.Key)}", $Item.Value
-                $messageContent = $messageContent -replace "{/$($Item.Key)}", $AssistantColor # Sometimes the bots do this, but it's not inteded
+            $colors = $script:COLORS + @{
+                RESET = $AssistantColor
             }
-            $messageContent = $messageContent -replace "{RESET}", $AssistantColor
+
+            if ([Config]::Get("ColorlessOutput")) {
+                foreach ($Color in $colors.GetEnumerator()) {
+                    $messageContent = $messageContent -replace "{$($Color.Key)}", ""
+                    $messageContent = $messageContent -replace "{/$($Color.Key)}", ""
+                }
+            }
+            foreach ($Color in $colors.GetEnumerator()) {
+                $messageContent = $messageContent -replace "{$($Color.Key)}", $Color.Value
+                $messageContent = $messageContent -replace "{/$($Color.Key)}", $AssistantColor # Sometimes the bots do this, but it's not inteded
+            }
         }
 
         $color = if ($this.Role -eq "assistant") {
@@ -1162,6 +1164,9 @@ class Message {
     }
 
     static ResetLoud() { # Reset the conversation and inform the user
+        # Save the conversation first
+        [Message]::Autosave()
+
         [Message]::Reset()
 
         Write-Host "Conversation reset" -ForegroundColor Green
@@ -1183,11 +1188,11 @@ class Message {
         Write-Host ([Message]::Submit().FormatMessage())
     }
 
-    static ExportJson([string]$filename) {
+    static SaveDialogue([string]$filename) {
         $filepath = ""
         while ($true) {
             if (!$filename) {
-                Write-Host (WrapText "What would you like to name the file? (Press enter to generate a name, enter /cancel to cancel)")
+                Write-Host (WrapText "What would you like to name the file? (Press enter to generate a name, type /cancel to cancel)")
                 Write-Host "> " -NoNewline
                 $filename = $global:Host.UI.ReadLine()
                 if (!$filename) {
@@ -1253,27 +1258,31 @@ class Message {
         }
 
         [Message]::SaveFile($filepath)
+
+        Write-Host "Conversation saved to $($filepath)" -ForegroundColor Green
     }
 
     static SaveFile ([string]$filepath) {
         $json = [Message]::Messages | ConvertTo-Json -Depth 5
 
         $json | Set-Content -Path $filepath
-
-        if ((Split-Path $filepath -Leaf) -ne "autosave.json") { # Silent autosave
-            Write-Host "Conversation saved to $($filepath)" -ForegroundColor Green
-        }
     }
 
-    static ImportJson([string]$filename) {
+    static LoadDialogue([string]$filename) {
         if (!$filename) {
             Write-Host "This will clear the current conversation. Type ""/cancel"" to cancel." -ForegroundColor Red
             Write-Host "Saved conversations:"
+
+            # $folders = Get-ChildItem -Path $script:ConversationsDir -Directory
 
             # Sort items by most recent
             $conversations = Get-ChildItem -Path $script:ConversationsDir -Filter *.json | Sort-Object LastWriteTime -Descending
 
             # display each item
+            # foreach ($folder in $folders) {
+            #     Write-Host "  >`t$($folder.Name)/" -ForegroundColor Blue
+            # }
+
             foreach ($conversation in $conversations) {
                 $index = $conversations.IndexOf($conversation) + 1
                 Write-Host "  [$index]`t$($conversation.BaseName)" -ForegroundColor DarkYellow
@@ -1322,6 +1331,22 @@ class Message {
         [Message]::LoadFile($filename)
 
         Write-Host "Conversation ""$filename"" loaded" -ForegroundColor Green
+    }
+
+    static Autosave() {
+        if ([Config]::Get("Autosave") -and ([Message]::Messages | Where-Object { $_.role -ne "system" }).Count -gt 0) {
+            if ([Config]::Get("AutosaveAll")) {
+                $autosavePath = Join-Path $script:ConversationsDir "autosave"
+    
+                if (!(Test-Path $autosavePath)) {
+                    New-Item -ItemType Directory $autosavePath | Out-Null
+                }
+    
+                [Message]::SaveFile((Join-Path $autosavePath "autosave-$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss").json"))
+            }
+    
+            [Message]::SaveFile((Join-Path $script:ConversationsDir "latest.json"))
+        }
     }
 
     static LoadFile([string]$File) {
@@ -1554,7 +1579,7 @@ class Message {
         # Replace spaces with underscores
         $filename = $filename -replace "\s", "_"
 
-        $disallowedNames = @("con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9", "...", "_")
+        $disallowedNames = "con", "prn", "aux", "nul", ((1..9) | ForEach-Object {"com$_"}), ((1..9) | ForEach-Object {"lpt$_"}), "...", "_"
 
         # If nothing remains, or if the bot somehow output nothing, return a random filename
         if (!$filename -or $filename -in $disallowedNames) {
@@ -1700,7 +1725,7 @@ function DefineCommands {
     [Command]::new(
         ("save", "s", "export"), 
         {
-            [Message]::ExportJson($args[0])
+            [Message]::SaveDialogue($args[0])
         }, 
         "Save the current conversation to a file", 
         1, "[filename]"
@@ -1709,7 +1734,7 @@ function DefineCommands {
     [Command]::new(
         ("load", "l", "import"), 
         {
-            [Message]::ImportJson($args[0])
+            [Message]::LoadDialogue($args[0])
         }, 
         "Load a previous conversation", 
         1, "[filename]"
@@ -1876,6 +1901,18 @@ function DefineSettings {
         "System"
     ) | Out-Null
 
+    [Config]::new(
+        "AutosaveAll",
+        $false,
+        "System"
+    ) | Out-Null
+
+    [config]::new(
+        "ColorlessOutput",
+        $false,
+        "System"
+    ) | Out-Null
+
     # After init, immediately load the config file
     [Config]::ReadConfig()
 
@@ -1959,8 +1996,5 @@ try { # Main Loop
     }
 } finally {
     # For some reason, ctrl+c triggers finally, but doesn't run the function
-    # Save the conversation to autosave
-    if ([Config]::Get("Autosave")) {
-        [Message]::SaveFile((Join-Path $ConversationsDir "autosave.json"))
-    }
+    [Message]::Autosave()
 }
