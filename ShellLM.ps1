@@ -105,7 +105,7 @@ param (
     [switch] $Clear,
 
     [Parameter(Mandatory=$false)]
-    [string]$ConfigFile = (Join-Path $PSScriptRoot "\config.yaml"),
+    [string]$ConfigFile = (Join-Path $PSScriptRoot "\config.json"),
 
     [Parameter(Mandatory=$false)]
     [string]$ConversationsDir = (Join-Path $PSScriptRoot "\conversations\"),
@@ -369,7 +369,8 @@ class Config {
     $DefaultValue
 
     static [System.Collections.Generic.List[Config]] $Settings = @()
-    static [bool] $IsYaml = (get-module -name powershell-yaml)
+
+    static [bool]$IsYaml
 
     Config ([string]$Name, $Value) { # Not used
         $this.Name = $Name
@@ -623,13 +624,28 @@ class Config {
             }
         }
 
-        $config | ConvertTo-Yaml | Set-Content -Path $script:ConfigFile
+        if ([Config]::IsYaml) {
+            Write-Host Writing to money town please
+            $config | ConvertTo-Yaml | Set-Content -Path $script:ConfigFile
+        } else {
+            $config | ConvertTo-Json | Set-Content -Path $script:ConfigFile
+        }
     }
 
     static ReadConfig () {
-        if (Test-Path $script:ConfigFile) {
-            $config = Get-Content -Path $script:ConfigFile | ConvertFrom-Yaml
+        if ((Get-Module -Name powershell-yaml)) {
+            # Yaml is easier to use, so is preferable, but only if you have the module preinstalled
+            $script:ConfigFile = $script:ConfigFile -replace "\.json", ".yaml"
+        }
 
+        [Config]::IsYaml = $script:ConfigFile -like "*.yaml"
+
+        if (Test-Path $script:ConfigFile) {
+            if ([Config]::IsYaml) {
+                $config = [pscustomobject] (Get-Content -Path $script:ConfigFile | ConvertFrom-Yaml)
+            } else {
+                $config = Get-Content -Path $script:ConfigFile | ConvertFrom-Json
+            }
             foreach ($setting in $config.PSObject.Properties) {
                 [Config]::SetValue($setting.Name, $setting.Value)
             }
@@ -746,8 +762,6 @@ class Command {
 class Message {
     [string]$Content;
     [string]$Role;
-
-    [string]$ImageURL;
 
     static [string] $OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
     static [string] $OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations"
