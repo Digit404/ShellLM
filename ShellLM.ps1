@@ -783,6 +783,17 @@ class Message {
         return $message
     }
 
+    static [hashtable[]] GetMessages () {
+        return @(
+            foreach ($message in [Message]::Messages) {
+                @{
+                    content = $message.Content
+                    role    = $message.Role
+                }
+            }
+        )
+    }
+
     static [Message] Query([string]$MessageContent) { # Wrapper for submit to add a message from the user first
 
         # It doesn't exist if it's not added to the list
@@ -876,7 +887,7 @@ class Message {
             default {
                 $body = @{
                     model = $script:MODEL
-                    messages = [Message]::Messages
+                    messages = [Message]::GetMessages()
                     temperature = ([int][Config]::Get("Temperature"))
                 }
         
@@ -911,9 +922,11 @@ class Message {
                     "Authorization" = "Bearer $script:Key"; 
                     "Content-Type" = "application/json"
                 } `
-                -Body $bodyJSON | ConvertFrom-Json
+                -Body $bodyJSON
 
-            return $response
+            $responseContent = $response.Content | ConvertFrom-Json
+
+            return $responseContent
         } catch {
             # Catching errors caused by the API call
             Write-Host "An error occurred: $_" -ForegroundColor Red
@@ -937,9 +950,11 @@ class Message {
                 -Headers @{
                     "Content-Type" = "application/json"
                 } `
-                -Body $bodyJSON | ConvertFrom-Json
+                -Body $bodyJSON
 
-            return $response
+            $responseContent = $response.Content | ConvertFrom-Json
+
+            return $responseContent
         } catch {
             # Catching errors caused by the API call
             Write-Host "An error occurred: $_" -ForegroundColor Red
@@ -960,9 +975,11 @@ class Message {
                     "x-api-key" = $script:AnthropicKey;
                     "Content-Type" = "application/json"
                 } `
-                -Body $bodyJSON | ConvertFrom-Json
+                -Body $bodyJSON
 
-            return $response
+            $responseContent = $response.Content | ConvertFrom-Json
+
+            return $responseContent
         } catch {
             # Catching errors caused by the API call
             Write-Host "An error occurred: $_" -ForegroundColor Red
@@ -1263,7 +1280,7 @@ class Message {
     }
 
     static SaveFile ([string]$filepath) {
-        $json = [Message]::Messages | ConvertTo-Json -Depth 5
+        $json = [Message]::GetMessages() | ConvertTo-Json -Depth 5
 
         $json | Set-Content -Path $filepath
     }
