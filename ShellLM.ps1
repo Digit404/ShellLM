@@ -794,14 +794,12 @@ class Message {
         )
     }
 
-    static [Message] Query([string]$MessageContent) { # Wrapper for submit to add a message from the user first
+    static WriteResponse([string]$MessageContent) {
+        $response = [Message]::Submit($MessageContent)
 
-        # It doesn't exist if it's not added to the list
-        if ($MessageContent) {
-            [Message]::AddMessage($MessageContent, "user")
+        if ($response.FormatMessage()) {
+            Write-Host ($response.FormatMessage())
         }
-
-        return [Message]::Submit()
     }
 
     static [Message] Submit() { # Submit messages to the LLM and receive a response
@@ -910,6 +908,26 @@ class Message {
         return $assistantMessage
     }
 
+    static [Message] Submit ([string]$MessageContent) {
+        if ($MessageContent) {
+            [Message]::AddMessage($MessageContent, "user")
+        }
+
+        return [Message]::Submit()
+    }
+
+    static [Message] StreamSubmit([string]$MessageContent) {
+        Write-Host "Thinking...`r" -NoNewline
+
+        $body = @{
+            model = $script:Model
+            messages = [Message]::GetMessages()
+            temperature = ([int][Config]::Get("Temperature"))
+        }
+
+        return [Message]::CallOpenAI([Message]::OPENAI_CHAT_URL, $body)
+    }
+
     static [psobject] CallOpenAI([string]$url, [hashtable]$body) {
         try {
             $bodyJSON = $body | ConvertTo-Json -Compress
@@ -924,6 +942,7 @@ class Message {
                 } `
                 -Body $bodyJSON
 
+            # as it turns out, if you were to convert the whole response from json, it would work, but would mangle all non-ascii chars
             $responseContent = $response.Content | ConvertFrom-Json
 
             return $responseContent
@@ -1579,7 +1598,7 @@ class Message {
         Start-Process $outputPath
 
         # Hopefully the bot will say something interesting in response to this, and not something random
-        $message = [Message]::Whisper("Image successfully created and saved to the user's computer in the .\images\ folder. Write a message informing the user.")
+        $message = [Message]::Whisper("Image successfully created and saved to the user's computer in the .\images\ folder. Write a message informing the user. Don't use colors.")
         Write-Host (WrapText $message) -ForegroundColor ([Config]::Get("AssistantColor"))
     }
 
@@ -1719,6 +1738,7 @@ class Message {
 function DefineCommands {
     # The first command is the one shown to the user
     [Command]::Commands.Clear()
+    
     [Command]::new(
         ("bye", "goodbye"), 
         {[Message]::Goodbye()}, 
@@ -1964,7 +1984,9 @@ if ($Query) {
 
     $global:LastQuery = $Query
 
-    $response = [Message]::Query($Query)
+    [Message]::AddMessage($Query, "user") | Out-Null
+
+    $response = [Message]::Submit()
 
     $global:LastResponse = $response.content
 
@@ -2004,11 +2026,7 @@ try { # Main Loop
             }
 
             # Simply `[Message]::Query($prompt)?.FormatMessage()` (with the conditional chaining operator) runs it twice for some reason
-            $response = [Message]::Query($prompt)
-
-            if ($response) {
-                Write-Host ($response.FormatMessage())
-            }
+            [Message]::WriteResponse($prompt)
         }
     }
 } finally {
