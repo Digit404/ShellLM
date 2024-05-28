@@ -49,7 +49,7 @@ $body = @{
         },
         @{
             role    = "user"
-            content = "write a short story using all your colors"
+            content = "write a short story using all of your colors"
         }
     )
     stream   = $true
@@ -73,65 +73,103 @@ $RequestStream.Write($RequestBody, 0, $RequestBody.Length)
 $responseStream = $webrequest.GetResponse().GetResponseStream()
 $streamReader = [System.IO.StreamReader]::new($responseStream)
 
-function GetLine {
+function GetChunk {
     $response = $streamReader.ReadLine()
 
     if (!$response) {
         return $null
     }
 
+    $Global:chunks += ($response -split ": ")[1]
+
     return ConvertFrom-Json ($response -split ": ")[1]
 }
 
-function DetermineColor {
+function FindColor {
     param (
-        [string]$tagStart
+        [string]$colorTag
     )
 
-    $colorTag = $tagStart
+    # Clean color tag
+    $colorTag = ($colorTag.ToUpper() -replace "§", "") -replace "/", ""
 
-    while ($true) {
-        $line = GetLine
-
-        if (!$line) {
-            continue
-        }
-
-        $token = $line.choices.delta.content
-
-        if ($token -contains "§") {
-            $colorTag += ($token -split "§")[0]
-
-            $color = $COLORS.ContainsKey($colorTag) ? $COLORS[$colorTag] : $AssistantColor
-
-            return ($color)
-        }
-
-        $colorTag += $token
+    if ($COLORS.ContainsKey($colorTag)) {
+        return $COLORS[$colorTag]
     }
+
+    return $AssistantColor
 }
 
+function PrintWord {
+    param (
+        [string]$word,
+        [string]$color
+    )
+
+    $maxLineLength = $host.ui.rawui.BufferSize.Width - 1
+    $currentLineLength = [Console]::CursorLeft
+    if ($currentLineLength + $word.Length -gt $maxLineLength) {
+        Write-Host ""
+        $currentLineLength = 0
+        if ($word -eq " ") {
+            return
+        }
+    }
+    Write-Host "$color$word" -NoNewline
+}
+
+$buffer = ""
 $color = $AssistantColor
 
-while ($true) {
-    $line = GetLine
+$global:message = ""
+$global:chunks = @()
 
-    if (!$line) {
+do {
+    $chunk = GetChunk
+    if (!$chunk) {
         continue
     }
 
-    if ($line.choices.finish_reason -eq "stop") {
-        break
+    $stop = $chunk.choices.finish_reason -eq "stop"
+
+    if ($stop) {
+        Write-Host Stopping! -ForegroundColor Red
     }
 
-    $token = $line.choices.delta.content
+    $token = $chunk.choices.delta.content
+    $global:message += $token
+    $buffer += $token
 
-    foreach ($char in $token.ToCharArray()) {
-        if ($char -eq "§") {
-            $color = DetermineColor ($token -split "§")[1]
+    while ($true) {
+        $split = $buffer -split "(\s+)"
+
+        $words = $split | Select-Object -SkipLast 1 | Where-Object { $_ -ne "" }
+
+        if (!$words) {
             break
         }
 
-        Write-Host $color$char -NoNewline
+        $word = $words[0]
+
+        if ($word -eq "`n`n") {
+            Write-Host Hello -ForegroundColor Green
+        }
+
+        $buffer = ($split | Where-Object { $_ -ne "" } | Select-Object -Skip 1) -join ""
+
+        if ($word -like "*§*§*") {
+            $parts = $word -split "§"
+
+            # write each even part and change the color to each odd part
+            for ($i = 0; $i -lt $parts.Length; $i++) {
+                if ($i % 2 -eq 0) {
+                    PrintWord -word $parts[$i] -color $color
+                } else {
+                    $color = FindColor $parts[$i]
+                }
+            }
+        } else {
+            PrintWord -word $word -color $color
+        }
     }
-}
+} while (!$stop)

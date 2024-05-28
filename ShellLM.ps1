@@ -63,6 +63,7 @@
 param (
     [Parameter(Mandatory=$false)]
     [ValidateSet(
+        "gpt",
         "gpt-3",
         "gpt-3.5",
         "gpt-3.5-turbo",
@@ -70,6 +71,7 @@ param (
         "gpt-4-turbo",
         "gpt-4o",
         "gemini",
+        "claude",
         "claude-3",
         "claude-3-opus", 
         "claude-3-sonnet", 
@@ -237,7 +239,7 @@ function HandleAnthropicKeyState { # This will only be called if the model is cl
 }
 
 function HandleModelState { # the turbo models are better than the base models and are less expensive
-    if ($script:Model -in "gpt-3", "gpt-3.5") {
+    if ($script:Model -in "gpt-3", "gpt-3.5", "gpt") {
         $script:Model = "gpt-3.5-turbo"
     }
 
@@ -245,7 +247,7 @@ function HandleModelState { # the turbo models are better than the base models a
         $script:Model = "gpt-4o"
     }
 
-    if ($script:Model -eq "claude-3") {
+    if ($script:Model -in "claude", "claude-3") {
         $script:Model = "claude-3-sonnet"
     }
 
@@ -420,6 +422,7 @@ class Config {
         [Config]::Settings.Add($this)
     }
 
+    # Find a setting by name, returns a list of matching settings
     static [Config[]] Find ([string]$Name) {
         $setting = [Config]::Settings | Where-Object { $_.Name -like "$Name*" }
 
@@ -478,6 +481,11 @@ class Config {
     }
 
     static SetValue ([string]$Name, $Value) {
+        if (![Config]::Find($Name)) {
+            Write-Host "Setting matching '$Name' not found." -ForegroundColor Red
+            return
+        }
+
         $setting = [Config]::Find($Name)[0]
 
         if ($setting) {
@@ -1243,7 +1251,7 @@ class Message {
 
                     while (Join-Path $script:ConversationsDir "$filename.json" | Test-Path) {
                         if ($failed -gt 5) {
-                            $filename = "UnnamedConversation$(Get-Random -Maximum 10000)"
+                            $filename = "UnnamedConversation-$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss")"
                         }
                         $failed++
                         $filename = [Message]::Whisper("Reply only with a good very short name that summarizes this conversation in a filesystem compatible string,`
@@ -1371,15 +1379,13 @@ class Message {
 
     static Autosave() {
         if ([Config]::Get("Autosave") -and ([Message]::Messages | Where-Object { $_.role -ne "system" }).Count -gt 0) {
-            if ([Config]::Get("AutosaveAll")) {
-                $autosavePath = Join-Path $script:ConversationsDir "autosave"
-    
-                if (!(Test-Path $autosavePath)) {
-                    New-Item -ItemType Directory $autosavePath | Out-Null
-                }
-    
-                [Message]::SaveFile((Join-Path $autosavePath "autosave-$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss").json"))
+            $autosavePath = Join-Path $script:ConversationsDir "autosave"
+
+            if (!(Test-Path $autosavePath)) {
+                New-Item -ItemType Directory $autosavePath | Out-Null
             }
+
+            [Message]::SaveFile((Join-Path $autosavePath "autosave-$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss").json"))
     
             [Message]::SaveFile((Join-Path $script:ConversationsDir "latest.json"))
         }
@@ -1575,7 +1581,7 @@ class Message {
         # The bot can be unoriginal sometimes
         while (Join-Path $script:ImagesDir "$filename.png" | Test-Path) {
             if ($failed -gt 5) {
-                $filename = "UnnamedImage$(Get-Random -Maximum 10000)"
+                $filename = "UnnamedImage-$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss")"
             }
 
             $failed++
@@ -1619,7 +1625,7 @@ class Message {
 
         # If nothing remains, or if the bot somehow output nothing, return a random filename
         if (!$filename -or $filename -in $disallowedNames) {
-            return "file$(Get-Random -Maximum 10000)"
+            return "file-$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss")"
         }
 
         return $filename
@@ -1938,12 +1944,6 @@ function DefineSettings {
         "System"
     ) | Out-Null
 
-    [Config]::new(
-        "AutosaveAll",
-        $false,
-        "System"
-    ) | Out-Null
-
     [config]::new(
         "ColorlessOutput",
         $false,
@@ -2025,7 +2025,6 @@ try { # Main Loop
                 continue
             }
 
-            # Simply `[Message]::Query($prompt)?.FormatMessage()` (with the conditional chaining operator) runs it twice for some reason
             [Message]::WriteResponse($prompt)
         }
     }
