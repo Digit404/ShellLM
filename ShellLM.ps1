@@ -121,7 +121,7 @@ $IMAGE_MODELS = "dall-e-2", "dall-e-3"
 
 $ESC = [char]27 # Escape char for colors
 
-if (!$PSVersionTable.PSCompatibleVersions -contains "7.0") {
+if (!($PSVersionTable.PSCompatibleVersions -contains "7.0")) {
     Write-Host "This script requires PowerShell 7.0 or later." -ForegroundColor Red
     exit
 }
@@ -269,10 +269,10 @@ function HandleModelState { # the turbo models are better than the base models a
 
 $SYSTEM_MESSAGE = (
     'You are a helpful assistant communicating through the terminal. Do not use markdown syntax. Give detailed responses. ' +
-    'You can use `{COLOR}` to change the color of your text for emphasis or whatever you want, and {RESET} to go back. ' +
+    'You can use `§COLOR§` to change the color of your text for emphasis or whatever you want, and §RESET§ to go back to your default color. ' +
     'If you write code, do not use "```". Use colors for syntax highlighting instead. ' +
     'Colors available are RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, GRAY, RESET. ' +
-    'You can also use DARK colors using {DARKCOLOR}. (E.g. {DARKRED}Hello{RESET}).' 
+    'You can also use DARK colors using §DARKCOLOR§. (E.g. §DARKRED§Hello§RESET§).' 
 )
 
 # Colors for the terminal
@@ -434,7 +434,14 @@ class Config {
     }
 
     static [object] Get ([string]$Name) {
-        $setting = [Config]::Find($Name)[0]
+        $matchingSettings = [Config]::Find($Name)
+
+        if (!$matchingSettings) {
+            Write-Host "Setting matching '$Name' not found." -ForegroundColor Red
+            return $null
+        }
+
+        $setting = $matchingSettings[0]
 
         if ($setting) {
             return $setting.Value
@@ -803,10 +810,15 @@ class Message {
     }
 
     static WriteResponse([string]$MessageContent) {
-        $response = [Message]::Submit($MessageContent)
+        # Check for streaming, only works with GPT models, for now
+        if ([Config]::Get("StreamResponse") -and $Script:Model -like "gpt*") {
+            [Message]::StreamResponse($MessageContent)
+        } else {
+            $response = [Message]::Submit($MessageContent)
 
-        if ($response.FormatMessage()) {
-            Write-Host ($response.FormatMessage())
+            if ($response.FormatMessage()) {
+                Write-Host ($response.FormatMessage())
+            }
         }
     }
 
@@ -924,16 +936,121 @@ class Message {
         return [Message]::Submit()
     }
 
-    static [Message] StreamSubmit([string]$MessageContent) {
-        Write-Host "Thinking...`r" -NoNewline
-
-        $body = @{
-            model = $script:Model
-            messages = [Message]::GetMessages()
-            temperature = ([int][Config]::Get("Temperature"))
+    static StreamResponse([string]$MessageContent) {
+        if ($MessageContent) {
+            [Message]::AddMessage($MessageContent, "user")
         }
 
-        return [Message]::CallOpenAI([Message]::OPENAI_CHAT_URL, $body)
+        # A word by word version of WrapText, only used here
+        function PrintWord {
+            param (
+                [string]$Word,
+                [string]$ColorChar
+            )
+        
+            $maxLineLength = $Host.UI.RawUI.BufferSize.Width - 1
+            $currentLineLength = [Console]::CursorLeft
+        
+            if ($currentLineLength + $Word.Length -gt $maxLineLength) {
+                Write-Host ""
+                $currentLineLength = 0
+                if ($Word -eq " ") {
+                    return
+                }
+            }
+        
+            Write-Host "$ColorChar$Word" -NoNewline
+        }
+
+        # Body definition cannot be reused from Submit() because it needs to be streamed
+        $body = @{
+            model = $script:MODEL
+            messages = [Message]::GetMessages()
+            temperature = ([int][Config]::Get("Temperature"))
+            stream = $true
+        } | ConvertTo-Json -Depth 10
+
+        # All this to set up a web request stream
+        $webrequest = [System.Net.HttpWebRequest]::Create([Message]::OPENAI_CHAT_URL)
+
+        $webrequest.Method = "POST"
+        $webrequest.Headers.Add("Authorization", "Bearer " + $script:Key)
+        $webrequest.ContentType = "application/json"
+
+        $RequestBody = [System.Text.Encoding]::UTF8.GetBytes($body)
+
+        $RequestStream = $webrequest.GetRequestStream()
+        $RequestStream.Write($RequestBody, 0, $RequestBody.Length)
+
+        $responseStream = $webrequest.GetResponse().GetResponseStream()
+        $streamReader = [System.IO.StreamReader]::new($responseStream)
+        
+        # Initialize some variables
+        $buffer = ""
+        $color = $script:COLORS[([Config]::Get("AssistantColor"))]
+        $Message = ""
+        $stop = $false
+
+        # Loop through the stream until the last message is received
+        while (!$stop) {
+            $response = $streamReader.ReadLine()
+        
+            # ReaLine may take a few cycles to actually get something
+            if (!$response) {
+                continue
+            }
+        
+            # Data comes in like this: "data: {chunk_json}"
+            $chunk = ConvertFrom-Json ($response -split ": ")[1]
+        
+            # The last chunk will have a finish_reason of "stop"
+            $stop = $chunk.choices.finish_reason -eq "stop"
+        
+            $token = $chunk.choices.delta.content
+        
+            # Add token to message here
+            $Message += $token
+        
+            $buffer += $token
+        
+            $words = $buffer -split "(\s+)"
+        
+            # The last word is not complete, so we skip it, unless it's the last word of the message
+            if (!$stop) {
+                $words = $words | Select-Object -SkipLast 1
+            }
+        
+            # remove every word except the last one
+            $buffer = $buffer -replace ".*\s", ""
+        
+            foreach ($word in $words) {
+                # filter out color tags
+                if ($word -like "*§*§*") {
+                    $parts = $word -split "§"
+        
+                    # write each even part and change the color to each odd part
+                    for ($i = 0; $i -lt $parts.Length; $i++) {
+                        if ($i % 2 -eq 0) {
+                            PrintWord -word $parts[$i] -color $color
+                        } else {
+                            $colorTag = ($parts[$i].ToUpper() -replace "§", "") -replace "/", ""
+        
+                            $color = $script:COLORS.ContainsKey($colorTag) ? $script:COLORS[$colorTag] : $script:COLORS[([Config]::Get("AssistantColor"))]
+                        }
+                    }
+                } else {
+                    PrintWord -word $word -color $color
+                }
+            }
+        }
+
+        # End with a newline
+        Write-Host
+
+        # Close the stream
+        $streamReader.Close()
+
+        [Message]::AddMessage($Message, "assistant")
     }
 
     static [psobject] CallOpenAI([string]$url, [hashtable]$body) {
@@ -1152,13 +1269,13 @@ class Message {
 
             if ([Config]::Get("ColorlessOutput")) {
                 foreach ($Color in $colors.GetEnumerator()) {
-                    $messageContent = $messageContent -replace "{$($Color.Key)}", ""
-                    $messageContent = $messageContent -replace "{/$($Color.Key)}", ""
+                    $messageContent = $messageContent -replace "§$($Color.Key)§", ""
+                    $messageContent = $messageContent -replace "§/$($Color.Key)§", ""
                 }
             }
             foreach ($Color in $colors.GetEnumerator()) {
-                $messageContent = $messageContent -replace "{$($Color.Key)}", $Color.Value
-                $messageContent = $messageContent -replace "{/$($Color.Key)}", $AssistantColor # Sometimes the bots do this, but it's not inteded
+                $messageContent = $messageContent -replace "§$($Color.Key)§", $Color.Value
+                $messageContent = $messageContent -replace "§/$($Color.Key)§", $AssistantColor # Sometimes the bots do this, but it's not inteded
             }
         }
 
@@ -1616,7 +1733,7 @@ class Message {
         }
 
         # strip colortags
-        $filename = $filename -replace "\{.*?\}", ""
+        $filename = $filename -replace "\§.+?\§", ""
 
         # Replace spaces with underscores
         $filename = $filename -replace "\s", "_"
@@ -1658,8 +1775,8 @@ class Message {
         $colors = $script:COLORS.keys + "RESET"
 
         foreach ($color in $colors) {
-            $MessageContent = $MessageContent -replace "{$color}", ""
-            $MessageContent = $MessageContent -replace "{/$color}", ""
+            $MessageContent = $MessageContent -replace "§$color§", ""
+            $MessageContent = $MessageContent -replace "§/$color§", ""
         }
 
         Set-Clipboard -Value $MessageContent
@@ -1944,10 +2061,16 @@ function DefineSettings {
         "System"
     ) | Out-Null
 
-    [config]::new(
+    [Config]::new(
         "ColorlessOutput",
         $false,
         "System"
+    ) | Out-Null
+
+    [Config]::new(
+        "StreamResponse",
+        $true,
+        "Chat"
     ) | Out-Null
 
     # After init, immediately load the config file
