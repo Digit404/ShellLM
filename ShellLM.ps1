@@ -949,6 +949,8 @@ class Message {
             )
         
             $maxLineLength = $Host.UI.RawUI.BufferSize.Width - 1
+            
+            # Using cursorLeft instead of keeping track of the line length is better but only works because we're printing each word as we get it
             $currentLineLength = [Console]::CursorLeft
         
             if ($currentLineLength + $Word.Length -gt $maxLineLength) {
@@ -1026,6 +1028,7 @@ class Message {
             foreach ($word in $words) {
                 # filter out color tags
                 if ($word -like "*§*§*") {
+                    # We switched from braces to section signs, because they are less common in writing and are always one token
                     $parts = $word -split "§"
         
                     # write each even part and change the color to each odd part
@@ -1346,7 +1349,7 @@ class Message {
             [Message]::Messages.RemoveAt([Message]::Messages.Count - 1)
         }
 
-        Write-Host ([Message]::Submit().FormatMessage())
+        [Message]::WriteResponse()
     }
 
     static SaveDialogue([string]$filename) {
@@ -1765,7 +1768,7 @@ class Message {
 
         Write-Host ""
 
-        Write-Host ([Message]::Submit().FormatMessage())
+        [Message]::WriteResponse()
     }
 
     Copy () {
