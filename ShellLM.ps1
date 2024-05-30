@@ -809,6 +809,19 @@ class Message {
         )
     }
 
+    static WriteResponse() {
+        # Check for streaming, only works with GPT models, for now
+        if ([Config]::Get("StreamResponse") -and $Script:Model -like "gpt*") {
+            [Message]::StreamResponse()
+        } else {
+            $response = [Message]::Submit()
+
+            if ($response.FormatMessage()) {
+                Write-Host ($response.FormatMessage())
+            }
+        }
+    }
+
     static WriteResponse([string]$MessageContent) {
         # Check for streaming, only works with GPT models, for now
         if ([Config]::Get("StreamResponse") -and $Script:Model -like "gpt*") {
@@ -941,6 +954,10 @@ class Message {
             [Message]::AddMessage($MessageContent, "user")
         }
 
+        [Message]::StreamResponse()
+    }
+
+    static StreamResponse() {
         # A word by word version of WrapText, only used here
         function PrintWord {
             param (
