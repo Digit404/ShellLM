@@ -68,14 +68,20 @@ param (
         "gpt-3.5",
         "gpt-3.5-turbo",
         "gpt-4",
-        "gpt-4-turbo",
         "gpt-4o",
+        "gpt-4o-mini",
         "gemini",
+        "gemini-pro",
+        "gemini-1.5-pro",
+        "gemini-1.5",
+        "gemini-1.5-flash",
         "claude",
         "claude-3",
-        "claude-3-opus", 
+        "claude-3.5",
+        "claude-3-haiku", 
         "claude-3-sonnet", 
-        "claude-3-haiku"
+        "claude-3-opus",
+        "claude-3.5-sonnet"
     )]
     [string] $Model,
 
@@ -116,7 +122,7 @@ param (
     [string]$ImagesDir = (Join-Path $PSScriptRoot "\images\")
 )
 
-$MODELS = "gpt-3.5-turbo", "gpt-4-turbo", "gpt-4o", "gemini", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku"
+$MODELS = "gpt-3.5-turbo", "gpt-4o-mini", "gpt-4o", "gemini", "gemini-1.5-pro", "gemini-1.5-flash", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku", "claude-3.5-sonnet"
 $IMAGE_MODELS = "dall-e-2", "dall-e-3"
 
 $ESC = [char]27 # Escape char for colors
@@ -247,8 +253,20 @@ function HandleModelState { # the turbo models are better than the base models a
         $script:Model = "gpt-4o"
     }
 
-    if ($script:Model -in "claude", "claude-3") {
+    if ($script:Model -in "claude-3") {
         $script:Model = "claude-3-sonnet"
+    }
+
+    if ($script:Model -eq "claude", "claude-3.5") {
+        $script:Model = "claude-3.5-sonnet"
+    }
+
+    if ($script:Model -eq "gemini-pro") {
+        $script:Model = "gemini"
+    }
+
+    if ($script:Model -eq "gemini-1.5") {
+        $script:Model = "gemini-1.5-pro"
     }
 
     # Asign the global values from the config file
@@ -2111,6 +2129,8 @@ HandleOpenAIKeyState
 
 # AskLLM mode, include the question in the command and it will try to answer as briefly as it can
 if ($Query) {
+    [Message]::Messages.Clear()
+
     [Message]::AddMessage(
         "You will be asked one short query. If asked a question, you will be as brief as possible with your answer, using incomplete sentences if necessary. " + 
         "You will respond with text only, no new lines or markdown elements. " + 
