@@ -1306,14 +1306,17 @@ class Message {
             }
 
             if ([Config]::Get("ColorlessOutput")) {
+                Write-Host "Got here!"
                 foreach ($Color in $colors.GetEnumerator()) {
                     $messageContent = $messageContent -replace "§$($Color.Key)§", ""
                     $messageContent = $messageContent -replace "§/$($Color.Key)§", ""
                 }
-            }
-            foreach ($Color in $colors.GetEnumerator()) {
-                $messageContent = $messageContent -replace "§$($Color.Key)§", $Color.Value
-                $messageContent = $messageContent -replace "§/$($Color.Key)§", $AssistantColor # Sometimes the bots do this, but it's not inteded
+            } else {
+                Write-Host "didne"
+                foreach ($Color in $colors.GetEnumerator()) {
+                    $messageContent = $messageContent -replace "§$($Color.Key)§", $Color.Value
+                    $messageContent = $messageContent -replace "§/$($Color.Key)§", $AssistantColor # Sometimes the bots do this, but it's not inteded
+                }
             }
         }
 
@@ -1462,7 +1465,18 @@ class Message {
     }
 
     static SaveFile ([string]$filepath) {
-        $json = [Message]::GetMessages() | ConvertTo-Json -Depth 5
+        $conversation = [Message]::GetMessages()
+
+        if ([Config]::Get("ColorlessOutput")) {
+            foreach ($message in $conversation) {
+                if ($message.role -ne "system") {
+                    # strip color tags
+                    $message.content = $message.content -replace "§.+?§", ""
+                }
+            }
+        }
+
+        $json = $conversation | ConvertTo-Json -Depth 5
 
         $json | Set-Content -Path $filepath
     }
