@@ -1306,13 +1306,11 @@ class Message {
             }
 
             if ([Config]::Get("ColorlessOutput")) {
-                Write-Host "Got here!"
                 foreach ($Color in $colors.GetEnumerator()) {
                     $messageContent = $messageContent -replace "§$($Color.Key)§", ""
                     $messageContent = $messageContent -replace "§/$($Color.Key)§", ""
                 }
             } else {
-                Write-Host "didne"
                 foreach ($Color in $colors.GetEnumerator()) {
                     $messageContent = $messageContent -replace "§$($Color.Key)§", $Color.Value
                     $messageContent = $messageContent -replace "§/$($Color.Key)§", $AssistantColor # Sometimes the bots do this, but it's not inteded
