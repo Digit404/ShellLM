@@ -13,7 +13,7 @@ ShellLM is a feature-rich and flexible terminal application that allows users to
 - Conversation saving and loading to/from JSON files
 - Retry option to generate alternative responses
 - AskLLM mode for concise answers to specific questions
-- Supports many models from many providers:
+- Supports many models from several providers:
 	- OpenAI
 		- `GPT-3.5-turbo`
 		- `GPT-4o`
