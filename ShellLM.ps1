@@ -70,18 +70,22 @@ param (
         "gpt-4",
         "gpt-4o",
         "gpt-4o-mini",
+        "gpt-4.5-preview",
         "gemini",
         "gemini-pro",
         "gemini-1.5-pro",
         "gemini-1.5",
         "gemini-1.5-flash",
+        "gemini-2.0-flash",
+        "gemini-2.0-pro-exp",
         "claude",
         "claude-3",
         "claude-3.5",
-        "claude-3-haiku", 
-        "claude-3-sonnet", 
-        "claude-3-opus",
-        "claude-3.5-sonnet"
+        "claude-3.7",
+        "claude-3-haiku",
+        "claude-3.5-sonnet",
+        "claude-3.5-haiku",
+        "claude-3.7-sonnet"
     )]
     [string] $Model,
 
@@ -122,7 +126,20 @@ param (
     [string]$ImagesDir = (Join-Path $PSScriptRoot "\images\")
 )
 
-$MODELS = "gpt-3.5-turbo", "gpt-4o-mini", "gpt-4o", "gemini", "gemini-1.5-pro", "gemini-1.5-flash", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku", "claude-3.5-sonnet"
+$MODELS = 
+    "gpt-3.5-turbo", 
+    "gpt-4o-mini", 
+    "gpt-4o",
+    "gpt-4.5-preview",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro", 
+    "gemini-2.0-flash",
+    "gemini-2.0-pro-exp",
+    "claude-3-haiku", 
+    "claude-3.5-sonnet",
+    "claude-3.5-haiku",
+    "claude-3.7-sonnet"
+
 $IMAGE_MODELS = "dall-e-2", "dall-e-3"
 
 $ESC = [char]27 # Escape char for colors
