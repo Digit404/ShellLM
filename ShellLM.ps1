@@ -72,7 +72,6 @@ param (
         "gpt-4o-mini",
         "gpt-4.5-preview",
         "gemini",
-        "gemini-pro",
         "gemini-1.5-pro",
         "gemini-1.5",
         "gemini-1.5-flash",
@@ -270,21 +269,30 @@ function HandleModelState { # the turbo models are better than the base models a
         $script:Model = "gpt-4o"
     }
 
-    if ($script:Model -in "claude-3") {
-        $script:Model = "claude-3-sonnet"
+    if ($script:Model -eq "claude-3") {
+        $script:Model = "claude-3-haiku"
     }
 
     if ($script:Model -eq "claude", "claude-3.5") {
         $script:Model = "claude-3.5-sonnet"
     }
 
-    if ($script:Model -eq "gemini-pro") {
-        $script:Model = "gemini"
+    if ($script:Model -eq "claude-3.7") {
+        $script:Model = "claude-3.7-sonnet"
+    }
+
+    if ($script:Model -eq "gemini") {
+        $script:Model = "gemini-1.5-pro"
     }
 
     if ($script:Model -eq "gemini-1.5") {
         $script:Model = "gemini-1.5-pro"
     }
+
+    if ($script:Model -in "gemini-2.0", "gemini-2") {
+        $script:Model = "gemini-2.0-pro-exp"
+    }
+    
 
     # Asign the global values from the config file
     if (!$script:Model) {
@@ -295,7 +303,7 @@ function HandleModelState { # the turbo models are better than the base models a
         $script:ImageModel = [Config]::Get("ImageModel")
     }
 
-    if ($script:Model -eq "gemini") {
+    if ($script:Model -like "gemini*") {
         HandleGeminiKeyState
     } elseif ($script:Model -like "claude*") {
         HandleAnthropicKeyState
@@ -1722,7 +1730,7 @@ class Message {
             [Message]::ChangeModel("")
         }
 
-        if ($Model -eq "gemini") { # this is where we change gears to the gemini model
+        if ($Model -like "gemini*") { # this is where we change gears to the gemini model
             HandleGeminiKeyState
         } elseif ($Model -like "claude*") {
             HandleAnthropicKeyState
