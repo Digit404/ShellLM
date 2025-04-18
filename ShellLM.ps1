@@ -64,13 +64,13 @@ param (
     [Parameter(Mandatory=$false)]
     [ValidateSet(
         "gpt",
-        "gpt-3",
-        "gpt-3.5",
-        "gpt-3.5-turbo",
         "gpt-4",
         "gpt-4o",
         "gpt-4o-mini",
-        "gpt-4.5-preview",
+        "gpt-4o-search-preview",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4.1-nano",
         "gemini",
         "gemini-1.5-pro",
         "gemini-1.5",
@@ -81,7 +81,6 @@ param (
         "claude-3",
         "claude-3.5",
         "claude-3.7",
-        "claude-3-haiku",
         "claude-3.5-sonnet",
         "claude-3.5-haiku",
         "claude-3.7-sonnet"
@@ -126,15 +125,16 @@ param (
 )
 
 $MODELS = 
-    "gpt-3.5-turbo", 
     "gpt-4o-mini", 
     "gpt-4o",
-    "gpt-4.5-preview",
+    "gpt-4o-search-preview",
+    "gpt-4.1",
+    "gpt-4.1-mini",
+    "gpt-4.1-nano",
     "gemini-1.5-flash",
     "gemini-1.5-pro", 
     "gemini-2.0-flash",
     "gemini-2.0-pro-exp",
-    "claude-3-haiku", 
     "claude-3.5-sonnet",
     "claude-3.5-haiku",
     "claude-3.7-sonnet"
@@ -261,19 +261,11 @@ function HandleAnthropicKeyState { # This will only be called if the model is cl
 }
 
 function HandleModelState { # the turbo models are better than the base models and are less expensive
-    if ($script:Model -in "gpt-3", "gpt-3.5", "gpt") {
-        $script:Model = "gpt-3.5-turbo"
-    }
-
-    if ($script:Model -eq "gpt-4") {
+    if ($script:Model -in "gpt-4", "gpt") {
         $script:Model = "gpt-4o"
     }
 
-    if ($script:Model -eq "claude-3") {
-        $script:Model = "claude-3-haiku"
-    }
-
-    if ($script:Model -eq "claude", "claude-3.5") {
+    if ($script:Model -in "claude", "claude-3", "claude-3.5") {
         $script:Model = "claude-3.5-sonnet"
     }
 
@@ -1025,10 +1017,10 @@ class Message {
         }
 
         # Body definition cannot be reused from Submit() because it needs to be streamed
+        # Not all openAI models support temperature
         $body = @{
             model = $script:MODEL
             messages = [Message]::GetMessages()
-            temperature = ([int][Config]::Get("Temperature"))
             stream = $true
         } | ConvertTo-Json -Depth 10
 
