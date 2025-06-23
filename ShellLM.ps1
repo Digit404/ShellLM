@@ -1054,8 +1054,9 @@ class Message {
                 continue
             }
         
-            # Data comes in like this: "data: {chunk_json}"
-            $chunk = ConvertFrom-Json ($response -split ": ")[1]
+            # Data comes in like this: "data: {chunk_json}" - Use a regex to extract the JSON part
+            $json = [regex]::Match($response, '(?<=: )(.+)$').Value
+            $chunk = ConvertFrom-Json $json]
         
             # The last chunk will have a finish_reason of "stop"
             $stop = $chunk.choices.finish_reason -eq "stop"
