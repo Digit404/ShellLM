@@ -71,6 +71,9 @@ param (
         "gpt-4.1",
         "gpt-4.1-mini",
         "gpt-4.1-nano",
+        "gpt-5",
+        "gpt-5-mini",
+        "gpt-5-nano",
         "gemini",
         "gemini-1.5-pro",
         "gemini-1.5",
@@ -131,6 +134,9 @@ $MODELS =
     "gpt-4.1",
     "gpt-4.1-mini",
     "gpt-4.1-nano",
+    "gpt-5",
+    "gpt-5-mini",
+    "gpt-5-nano",
     "gemini-1.5-flash",
     "gemini-1.5-pro", 
     "gemini-2.0-flash",
@@ -1054,8 +1060,15 @@ class Message {
                 continue
             }
         
+            $chunk = $null
+
             # Data comes in like this: "data: {chunk_json}"
-            $chunk = ConvertFrom-Json ($response -split ": ")[1]
+            if ($response -like "data: *") {
+                $jsonText = $response.Substring(6)
+                if ($jsonText.Trim()) {
+                    $chunk = ConvertFrom-Json $jsonText
+                }
+            }
         
             # The last chunk will have a finish_reason of "stop"
             $stop = $chunk.choices.finish_reason -eq "stop"
