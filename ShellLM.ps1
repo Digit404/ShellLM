@@ -84,9 +84,19 @@ param (
         "claude-3",
         "claude-3.5",
         "claude-3.7",
+        "claude-4",
+        "claude-4-1",
+        "claude-4.1",
+        "claude-4-sonnet",
+        "claude-4-opus",
+        "claude-4-1-opus",
+        "claude-4.1-opus",
         "claude-3.5-sonnet",
         "claude-3.5-haiku",
-        "claude-3.7-sonnet"
+        "claude-3.7-sonnet",
+        "claude-sonnet-4",
+        "claude-opus-4",
+        "claude-opus-4-1"
     )]
     [string] $Model,
 
@@ -143,7 +153,10 @@ $MODELS =
     "gemini-2.0-pro-exp",
     "claude-3.5-sonnet",
     "claude-3.5-haiku",
-    "claude-3.7-sonnet"
+    "claude-3.7-sonnet",
+    "claude-sonnet-4",
+    "claude-opus-4",
+    "claude-opus-4-1"
 
 $IMAGE_MODELS = "dall-e-2", "dall-e-3"
 
@@ -271,12 +284,24 @@ function HandleModelState { # the turbo models are better than the base models a
         $script:Model = "gpt-4o"
     }
 
-    if ($script:Model -in "claude", "claude-3", "claude-3.5") {
+    if ($script:Model -eq "claude-3.5") {
         $script:Model = "claude-3.5-sonnet"
     }
 
-    if ($script:Model -eq "claude-3.7") {
+    if ($script:Model -in "claude", "claude-3", "claude-3.7") {
         $script:Model = "claude-3.7-sonnet"
+    }
+
+    if ($script:Model -in "claude-4", "claude-4-sonnet") {
+        $script:Model = "claude-sonnet-4"
+    }
+
+    if ($script:Model -eq "claude-4-opus") {
+        $script:Model = "claude-opus-4"
+    }
+
+    if ($script:Model -in "claude-4-1", "claude-4.1", "claude-4-1-opus", "claude-4.1-opus") {
+        $script:Model = "claude-opus-4-1"
     }
 
     if ($script:Model -eq "gemini") {
@@ -935,9 +960,13 @@ class Message {
             }
             {$_ -like "claude*"} {
                 $Model = switch ($script:MODEL) {
-                    "claude-3-opus" { "claude-3-opus-20240229" }
-                    "claude-3-haiku" { "claude-3-haiku-20240307" }
-                    default { "claude-3-sonnet-20240229" }
+                    "claude-opus-4-1"   { "claude-opus-4-1-20250805" }
+                    "claude-opus-4"     { "claude-opus-4-20250514" }
+                    "claude-sonnet-4"   { "claude-sonnet-4-20250514" }
+                    "claude-3-7-sonnet" { "claude-3-7-sonnet-20250219" }
+                    "claude-3.5-haiku"  { "claude-3-5-haiku-20241022" }
+                    "claude-3-haiku"    { "claude-3-haiku-20240307" }
+                    default             { "claude-3-7-sonnet-20250219" }
                 }
         
                 $body = @{
